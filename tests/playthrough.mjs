@@ -22,13 +22,14 @@ const PLANS = {
     {hold:'right'}, {until:"p.x >= 1645"}, {release:'right'},
     {until:"P[8].cx >= 1849"},
     {hold:'right'},
-    {jumpAt:2330},
+    {jumpAt:2170},
+    {jumpAt:2360},
     {until:"false"}
   ],
   3: [
     {hold:'right'},
-    {jumpAt:230}, {jumpAt:575}, {jumpAt:870},
-    {moveTo:1090},
+    {jumpAt:230}, {jumpAt:575}, {jumpAt:940},
+    {moveTo:1150},
     {until:"H[2].dir < 0 && H[2].cx < 1460 && H[2].cx > 1250"},
     {hold:'right'},
     {jumpWhen:"H[2].cx - (p.x + p.w) < 90"},
@@ -45,7 +46,7 @@ const PLANS = {
     {moveTo:2200},
     {until:"H[1].dir < 0 && H[1].cy < 580"},
     {hold:'right'},
-    {jumpAt:2440},
+    {jumpAt:2440}, {jumpAt:2925}, {jumpAt:3170},
     {until:"false"}
   ],
   5: [
@@ -60,14 +61,60 @@ const PLANS = {
     {jumpWhen:"(H[2].cx - (p.x + p.w)) < 110 && (H[2].cx - (p.x + p.w)) > 0 && p.x > 2420"},
     {jumpAt:3060}, {jumpAt:3440}, {jumpAt:3650},
     {until:"false"}
+  ],
+  6: [
+    {hold:'right'},
+    {jumpAt:150}, {jumpAt:450}, {jumpAt:950},
+    {jumpWhen:"H[1].cx - (p.x + p.w) < 170 && H[1].cx > p.x"},
+    {tapAt:2340},
+    {jumpAt:2850},
+    {until:"p.x >= 3170"}, {release:'right'}, {hold:'left'},
+    {until:"H[4].state === 'rested'"}, {release:'left'},
+    {hold:'right'}, {jumpAt:3220},
+    {until:"false"}
+  ],
+  7: [
+    {hold:'right'},
+    {jumpAt:560}, {jumpAt:980}, {jumpAt:1975},
+    {jumpWhen:"H[1].cx - (p.x + p.w) < 170 && H[1].cx > p.x"},
+    {jumpAt:2590},
+    {tapAt:3075},
+    {jumpAt:3350},
+    {until:"false"}
+  ],
+  8: [
+    {hold:'right'},
+    {jumpAt:470}, {jumpAt:890},
+    {jumpWhen:"H[1].cx - (p.x + p.w) < 170 && H[1].cx > p.x"},
+    {moveTo:1960},
+    {until:"P[5].cx <= 2001 && P[5].waitT > 0.15"},
+    {hold:'right'}, {until:"p.x >= 2015"}, {release:'right'},
+    {until:"P[5].cx >= 2289"},
+    {hold:'right'},
+    {until:"p.x >= 2570"}, {release:'right'},
+    {until:"H[3].state === 'rested'"},
+    {hold:'right'}, {jumpAt:2640},
+    {moveTo:3330},
+    {until:"H[4].dir < 0 && H[4].cx < 3580 && H[4].cx > 3450"},
+    {hold:'right'},
+    {jumpWhen:"H[4].cx - (p.x + p.w) < 90"},
+    {jumpAt:3640},
+    {jumpAt:4630}, {jumpAt:4915}, {jumpAt:5030},
+    {until:"false"}
   ]
 };
 
 export async function runPlanExported(page, levelIndex, plan, opts){ return runPlan(page, levelIndex, plan, opts); }
 async function runPlan(page, levelIndex, plan, opts = {}) {
-  return page.evaluate(({levelIndex, plan, startCheckpoint, maxSec}) => {
+  return page.evaluate(({levelIndex, plan, startCheckpoint, maxSec, jitter, seed}) => {
+    let rs = seed || 1;
+    const rnd = () => (rs = (rs * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+    // optional human-like timing error: shift each jump threshold by ±jitter units
+    plan = plan.map(a => (jitter && (a.jumpAt != null || a.tapAt != null))
+      ? Object.assign({}, a, a.jumpAt != null ? {jumpAt: a.jumpAt + (rnd() * 2 - 1) * jitter} : {tapAt: a.tapAt + (rnd() * 2 - 1) * jitter}) : a);
     const D = window.Razebait.debug;
     D.setLoopPaused(true);
+    ['left', 'right', 'jump'].forEach(k => D.press(k, false)); // no keys carried over from a previous run
     D.start(levelIndex);
     if (startCheckpoint) { /* not used */ }
     const STEP = D.consts.STEP;
@@ -93,6 +140,10 @@ async function runPlan(page, levelIndex, plan, opts = {}) {
         const a = plan[i];
         if (a.hold) { D.press(a.hold, true); i++; continue; }
         if (a.release) { D.press(a.release, false); i++; continue; }
+        if (a.tapAt != null) { // short hop: release jump after 4 sim steps
+          if (p.x >= a.tapAt && p.grounded && jumpRelease < 0) { D.press('jump', true); jumpRelease = t + 4 * STEP - 1e-6; log.push('tap@' + Math.round(p.x)); i++; }
+          break;
+        }
         if (a.jumpAt != null) {
           if (p.x >= a.jumpAt && p.grounded && jumpRelease < 0) { D.press('jump', true); jumpRelease = t + 0.4; log.push('jump@' + Math.round(p.x)); i++; }
           break;
@@ -114,12 +165,38 @@ async function runPlan(page, levelIndex, plan, opts = {}) {
     }
     const p = D.level().player;
     return {won:false, timeout:true, t, step:i, x:p.x, y:p.y, deaths, log};
-  }, {levelIndex, plan, startCheckpoint: opts.cp, maxSec: opts.maxSec || 40});
+  }, {levelIndex, plan, startCheckpoint: opts.cp, maxSec: opts.maxSec || 40, jitter: opts.jitter || 0, seed: opts.seed || 1});
+}
+
+// Difficulty curve: for every timed jump in a level's winning route, sweep
+// the take-off point (others at nominal) and measure the width of the window
+// that still clears the level. Fewer/narrower windows = harder.
+export async function difficulty(page, range = 160, stepSize = 4) {
+  const out = {};
+  for (const id of Object.keys(PLANS)) {
+    const plan = PLANS[id];
+    const windows = [];
+    for (let k = 0; k < plan.length; k++) {
+      const a = plan[k];
+      const key = a.jumpAt != null ? 'jumpAt' : a.tapAt != null ? 'tapAt' : null;
+      if (!key) continue;
+      const tryOff = async off => (await runPlan(page, +id - 1, plan.map((b, m) => m === k ? Object.assign({}, b, {[key]: b[key] + off}) : b), {maxSec: 40})).won;
+      let lo = 0, hi = 0;
+      while (lo > -range && await tryOff(lo - stepSize)) lo -= stepSize;
+      while (hi < range && await tryOff(hi + stepSize)) hi += stepSize;
+      windows.push({at: a[key], type: key === 'tapAt' ? 'tap' : 'jump', width: hi - lo + stepSize, capped: lo <= -range || hi >= range});
+    }
+    // score: sum of 100/width over timed jumps (a 50-unit window ≈ 130 ms adds 2)
+    const score = +windows.reduce((sum, w) => sum + 100 / w.width, 0).toFixed(2);
+    out[id] = {score, timedJumps: windows.length, tightest: Math.min(...windows.map(w => w.width)), windows};
+  }
+  return out;
 }
 
 export async function playthroughs(page) {
   const results = {};
-  for (let i = 0; i < 5; i++) {
+  const count = await page.evaluate(() => window.Razebait.levels.length);
+  for (let i = 0; i < count; i++) {
     const r = await runPlan(page, i, PLANS[i + 1]);
     const naive = await runPlan(page, i, [{hold:'right'}, {until:'false'}], {maxSec: 20});
     results[i + 1] = {completed: r.won, time: r.t, deaths: r.deaths, step: r.step, jumps: r.log,

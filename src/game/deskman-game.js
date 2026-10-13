@@ -11,7 +11,7 @@ if(!root || root.getAttribute('data-dgm-init')) return;
 root.setAttribute('data-dgm-init','1');
 
 const $ = (id)=>document.getElementById(id);
-const GAME_VERSION = '1.3.0';
+const GAME_VERSION = '1.4.0';
 const DEBUG = window.RAZEBAIT_DEBUG === true;
 
 /* =========================================================================
@@ -243,19 +243,19 @@ const LEVELS = [
     width:3200, height:900, spawn:{x:90, y:G-62},
     platforms:[
       ground(0, 300),
-      ground(300, 200, {type:'disappearing', delay:800}),
+      ground(300, 200, {type:'disappearing', delay:650}),
       ground(500, 250),
-      ground(750, 150, {type:'disappearing', delay:650}),
-      ground(900, 150, {type:'disappearing', delay:600}),
-      ground(1050, 150, {type:'disappearing', delay:550}),
-      ground(1200, 150, {type:'disappearing', delay:500}),
+      ground(750, 150, {type:'disappearing', delay:560}),
+      ground(900, 150, {type:'disappearing', delay:520}),
+      ground(1050, 150, {type:'disappearing', delay:480}),
+      ground(1200, 150, {type:'disappearing', delay:440}),
       ground(1350, 280),
       {x:1630, y:G, w:130, h:30, type:'moving', path:{x1:1630, y1:G, x2:1850, y2:G, speed:150, pauseStart:0.6, pause:0.8}},
       ground(1990, 400),
-      ground(2390, 200, {type:'disappearing', delay:170}),
-      ground(2590, 610)
+      ground(2390, 250, {type:'disappearing', delay:170}),
+      ground(2640, 560)
     ],
-    hazards:[],
+    hazards:[ spike(2230) ],
     goal:{x:3020, y:G-100, w:70, h:100, type:'normal'},
     annotations:[ {x:560, y:520, text:"don't stop."} ],
     deathMessages:["You trusted the floor.","That was definitely the floor.","It was never going to hold.","You stopped. It noticed.","That one was faster. Sorry."],
@@ -265,8 +265,8 @@ const LEVELS = [
     id:3, name:'HIDDEN', subtitle:'Not everything is visible.',
     width:3600, height:900, spawn:{x:90, y:G-62},
     platforms:[
-      ground(0, 900),
-      ground(1020, 680),
+      ground(0, 980),
+      ground(1100, 600),
       {x:1700, y:560, w:300, h:340, type:'solid'},
       ground(2000, 600),
       ground(2600, 300, {type:'invisible'}),
@@ -301,7 +301,9 @@ const LEVELS = [
     hazards:[
       spike(960),
       {x:2300, y:470, w:60, h:60, type:'saw', path:{x1:2300, y1:470, x2:2300, y2:G-56, speed:260, pauseStart:0, pause:0.25}},
-      {type:'chaser', x:-2400, y:0, w:2400, h:900, startX:-260, stopX:3300, speed:345}
+      {type:'chaser', x:-2400, y:0, w:2400, h:900, startX:-260, stopX:3300, speed:352},
+      spike(3000),
+      spike(3250, 66)
     ],
     triggers:[
       {x:330, w:20, actions:[{do:'start', hazard:2}, {do:'toast', text:'RUN.'}]}
@@ -344,6 +346,114 @@ const LEVELS = [
     annotations:[ {x:3130, y:500, text:'finally.'} ],
     deathMessages:["You trusted something.","Everything you learned, and still.","Nothing here was ever solid.","So close it hurts."],
     completionMessage:"Nothing lied to you. You just stopped trusting it."
+  },
+  {
+    id:6, name:'SLIDE', subtitle:'The ground has opinions.',
+    width:3700, height:900, spawn:{x:90, y:G-62},
+    platforms:[
+      ground(0, 500),
+      ground(600, 400),
+      ground(1000, 300),                                 // 2: slides away from you
+      ground(1500, 600),
+      ground(2100, 600),
+      {x:2250, y:-1200, w:400, h:1670, type:'solid'},    // 5: low ceiling
+      ground(2700, 200),
+      ground(3050, 650)
+    ],
+    hazards:[
+      spike(220),
+      {x:2050, y:G-22, w:44, h:22, type:'spike', idle:true, path:{x1:2050, y1:G-22, x2:1520, y2:G-22, speed:520, once:true}},
+      {x:2250, y:470, w:400, h:22, type:'spike', flip:true},
+      spike(2425, 32),
+      {x:3300, y:330, w:70, h:90, type:'fallingCeiling', triggerZone:{x:3200, w:30}, warningTime:0.25, fallSpeed:1500, restY:G-90}
+    ],
+    triggers:[
+      {x:930, w:20, actions:[{do:'slide', plat:2, to:{x:1200}, dur:0.22}]},
+      {x:1600, w:20, actions:[{do:'start', hazard:1}]}
+    ],
+    checkpoints:[ {x:2160, y:G}, {x:2790, y:G} ],
+    goal:{x:3550, y:G-100, w:70, h:100, type:'normal'},
+    annotations:[ {x:2270, y:560, text:'tap.'} ],
+    deathMessages:["The floor moved. You didn't.","Full jumps are for open skies.","It was coming the whole time.","Short hop. SHORT."],
+    completionMessage:"You learned to jump less. That's growth."
+  },
+  {
+    id:7, name:'PANIC', subtitle:'No time to think.',
+    width:4300, height:900, spawn:{x:90, y:G-62},
+    platforms:[
+      ground(0, 700),
+      ground(820, 480),
+      ground(1300, 100, {type:'disappearing', delay:330}),
+      ground(1400, 100, {type:'disappearing', delay:330}),
+      ground(1500, 100, {type:'disappearing', delay:330}),
+      ground(1600, 400),
+      ground(2000, 240),                                 // 6: drops out of the world
+      ground(2240, 460),
+      {x:2700, y:560, w:200, h:340, type:'solid'},
+      ground(2900, 500),
+      {x:2950, y:-1200, w:400, h:1670, type:'solid'},    // 10: low ceiling
+      ground(3600, 700)
+    ],
+    hazards:[
+      spike(1050),
+      {x:2650, y:G-22, w:44, h:22, type:'spike', idle:true, path:{x1:2650, y1:G-22, x2:2260, y2:G-22, speed:480, once:true}},
+      {x:2950, y:470, w:400, h:22, type:'spike', flip:true},
+      spike(3150),
+      {type:'chaser', x:-2400, y:0, w:2400, h:900, startX:-150, stopX:3550, speed:355}
+    ],
+    triggers:[
+      {x:330, w:20, actions:[{do:'start', hazard:4}, {do:'toast', text:'RUN. FASTER.'}]},
+      {x:1900, w:20, actions:[{do:'slide', plat:6, to:{y:1100}, dur:0.3}]},
+      {x:2250, w:20, actions:[{do:'start', hazard:1}]}
+    ],
+    goal:{x:4050, y:G-100, w:70, h:100, type:'fake', fakeCount:1},
+    annotations:[],
+    deathMessages:["Panic is a choice. A bad one.","It's faster this time.","The wall says hi.","Everything at once. As promised."],
+    completionMessage:"You outran it. Barely. Again."
+  },
+  {
+    id:8, name:'THE DEVIL', subtitle:'Everything is a lie.',
+    width:5300, height:900, spawn:{x:90, y:G-62},
+    platforms:[
+      ground(0, 400),
+      ground(400, 500),
+      ground(900, 250),                                  // 2: slides away
+      ground(1370, 330),
+      ground(1700, 300),
+      {x:2000, y:G, w:120, h:30, type:'moving', path:{x1:2000, y1:G, x2:2290, y2:G, speed:180, pauseStart:0.4, pause:0.6}},
+      {x:2000, y:-1200, w:420, h:1670, type:'solid'},    // 6: ceiling over the pit
+      ground(2420, 480),
+      ground(2900, 100, {type:'disappearing', delay:330}),
+      ground(3000, 100, {type:'disappearing', delay:330}),
+      ground(3100, 100, {type:'disappearing', delay:330}),
+      ground(3200, 100, {type:'disappearing', delay:330}),
+      ground(3300, 400),
+      ground(3880, 420),
+      ground(4300, 200, {type:'invisible'}),
+      ground(4500, 150),
+      ground(4650, 260),                                 // 16: collapses under the first exit
+      ground(4910, 90),
+      {x:5000, y:540, w:300, h:360, type:'solid'},
+      {x:5280, y:300, w:20, h:240, type:'solid'}
+    ],
+    hazards:[
+      {x:560, y:G-22, w:44, h:22, type:'hiddenSpike', revealTrigger:{x:450, w:30}},
+      {x:1950, y:G-22, w:44, h:22, type:'spike', idle:true, path:{x1:1950, y1:G-22, x2:1340, y2:G-22, speed:540, once:true}},
+      {x:2000, y:470, w:420, h:22, type:'spike', flip:true},
+      {x:2700, y:330, w:140, h:90, type:'fallingCeiling', triggerZone:{x:2600, w:40}, warningTime:0.3, fallSpeed:1500, restY:G-90},
+      {x:3400, y:G-56, w:56, h:56, type:'saw', path:{x1:3400, y1:G-56, x2:3640, y2:G-56, speed:280, pauseStart:0, pause:0.3}},
+      {x:5100, y:518, w:44, h:22, type:'hiddenSpike', revealTrigger:{x:5060, w:20}}
+    ],
+    triggers:[
+      {x:820, w:20, actions:[{do:'slide', plat:2, to:{x:1120}, dur:0.2}]},
+      {x:1400, w:20, actions:[{do:'start', hazard:1}]},
+      {x:4560, w:20, actions:[{do:'collapse', plat:16, delay:120}, {do:'moveGoal', to:{x:5195, y:440}}]}
+    ],
+    checkpoints:[ {x:1730, y:G}, {x:3350, y:G} ],
+    goal:{x:4720, y:G-100, w:70, h:100, type:'normal'},
+    annotations:[ {x:4600, y:500, text:'you made it!'} ],
+    deathMessages:["Welcome to the end.","That was the easy part.","Every trick. One level.","The devil is in the details. And the floor.","You'll get it. Eventually."],
+    completionMessage:"You beat a level designed to be impossible. Take a break. You've earned it."
   }
 ];
 
@@ -408,7 +518,8 @@ function makeLevelState(data){
     dir:1, waitT:(p.path && p.path.pauseStart) || 0, legDist:0
   }));
   const hazards = data.hazards.map(h=>{
-    const o = Object.assign(cloneRect(h), {cx:h.x, cy:h.y, dir:1, waitT:(h.path && h.path.pauseStart) || 0, legDist:0, shake:0});
+    const o = Object.assign(cloneRect(h), {cx:h.path ? h.path.x1 : h.x, cy:h.path ? h.path.y1 : h.y, dir:1,
+      waitT:(h.path && h.path.pauseStart) || 0, legDist:0, shake:0, done:false});
     if(h.type === 'hiddenSpike'){ o.revealed = false; o.popT = 0; }
     if(h.type === 'fallingCeiling'){ o.state = 'idle'; o.stateT = 0; o.py = h.y; }
     if(h.type === 'chaser'){ o.running = false; o.front = h.startX; }
@@ -620,11 +731,14 @@ function solidsOf(ls){
 function advancePath(o, dt){
   const path = o.path;
   o.px = o.cx; o.py = o.cy;
-  if(o.waitT > 0){ o.waitT -= dt; o.dx = 0; o.dy = 0; return; }
+  o.dx = 0; o.dy = 0;
+  if(o.idle || o.done) return;             // waiting for a trigger / one-shot finished
+  if(o.waitT > 0){ o.waitT -= dt; return; }
   const ddx = path.x2-path.x1, ddy = path.y2-path.y1;
   const len = Math.hypot(ddx, ddy) || 1;
   o.legDist += path.speed*dt;
   if(o.legDist >= len){
+    if(path.once){ o.cx = path.x2; o.cy = path.y2; o.done = true; o.dx = o.cx - o.px; o.dy = o.cy - o.py; return; }
     o.legDist = 0;
     o.waitT = path.pause || 0;
     if(o.dir > 0){ o.cx = path.x2; o.cy = path.y2; o.dir = -1; }
@@ -642,6 +756,15 @@ function updateWorld(ls, dt){
     p.px = p.cx; p.py = p.cy; p.dx = 0; p.dy = 0;
     if(p.removed) continue;
     if(p.type === 'moving' && p.path) advancePath(p, dt);
+    if(p.slide){
+      // floor pulled away by a trigger (eased tween; riders are carried via dx/dy)
+      const sl = p.slide;
+      sl.t = Math.min(sl.dur, sl.t + dt);
+      const f = sl.t/sl.dur, e = 1 - Math.pow(1 - f, 3);
+      p.cx = sl.fx + (sl.tx - sl.fx)*e; p.cy = sl.fy + (sl.ty - sl.fy)*e;
+      p.dx = p.cx - p.px; p.dy = p.cy - p.py;
+      if(f >= 1){ p.slide = null; if(p.cy >= 900) p.removed = true; }
+    }
     if(p.triggered){
       p.timer += dt;
       p.shake = save.settings.reducedMotion ? 0 : Math.sin(p.timer*60) * Math.min(4, p.timer*24);
@@ -656,7 +779,7 @@ function updateWorld(ls, dt){
     }
   }
   for(const h of ls.hazards){
-    if(h.type === 'saw' && h.path) advancePath(h, dt);
+    if((h.type === 'saw' || h.type === 'spike') && h.path) advancePath(h, dt);
     else if(h.type === 'hiddenSpike' && h.revealed) h.popT = Math.min(1, h.popT + dt/0.08);
     else if(h.type === 'fallingCeiling') updateCeiling(ls, h, dt);
     else if(h.type === 'chaser' && h.running){
@@ -689,7 +812,14 @@ function startHazard(ls, h){
     h.state = 'warning'; h.stateT = 0; Sound.warn(); vibrate(HAPTIC.small);
   } else if(h.type === 'chaser' && !h.running){
     h.running = true; Sound.rumble(); vibrate(HAPTIC.strong);
+  } else if(h.idle){
+    h.idle = false; Sound.trapReveal(); vibrate(HAPTIC.small);
   }
+}
+function slidePlatform(p, to, dur){
+  if(!p || p.removed) return;
+  p.slide = { fx:p.cx, fy:p.cy, tx:to.x != null ? to.x : p.cx, ty:to.y != null ? to.y : p.cy, t:0, dur:dur || 0.25 };
+  Sound.doorMove(); vibrate(HAPTIC.small);
 }
 function revealHazard(h){
   if(h.revealed) return;
@@ -708,6 +838,7 @@ function runTriggerActions(ls, actions){
     else if(a.do === 'reveal') revealHazard(ls.hazards[a.hazard]);
     else if(a.do === 'start') startHazard(ls, ls.hazards[a.hazard]);
     else if(a.do === 'moveGoal') moveGoal(ls, a.to);
+    else if(a.do === 'slide') slidePlatform(ls.plats[a.plat], a.to, a.dur);
     else if(a.do === 'toast') showToast(a.text);
   }
 }
@@ -903,7 +1034,8 @@ function hazardHits(hz, p){
     case 'spike':
     case 'hiddenSpike': {
       if(hz.type === 'hiddenSpike' && !hz.revealed) return false;
-      return rectOverlap(p, {x:hz.x+hz.w*0.12, y:hz.y+hz.h*0.25, w:hz.w*0.76, h:hz.h*0.75});
+      const sx = hz.cx, sy = hz.cy;
+      return rectOverlap(p, {x:sx+hz.w*0.12, y:sy+(hz.flip ? 0 : hz.h*0.25), w:hz.w*0.76, h:hz.h*0.75});
     }
     case 'saw': {
       const r = Math.min(hz.w, hz.h)*0.4;
@@ -1098,7 +1230,7 @@ function triggerWin(){
   $('winMsg').textContent = data.completionMessage || ' ';
   $('btnNext').hidden = isFinale;
   $('btnWinMenu').hidden = !isFinale;
-  $('winTitle').textContent = isFinale ? 'ALL 5 LEVELS CLEARED' : 'LEVEL ' + data.id + ' CLEAR';
+  $('winTitle').textContent = isFinale ? 'ALL ' + LEVELS.length + ' LEVELS CLEARED' : 'LEVEL ' + data.id + ' CLEAR';
   let stats = 'Time ' + t.toFixed(2) + 's' + (newBest && st.clears > 1 ? ' (best!)' : '') + ' · Deaths ' + attemptDeaths;
   if(isFinale) stats += ' · Total deaths ' + save.totalDeaths;
   $('winStats').textContent = stats;
@@ -1390,7 +1522,16 @@ function drawHazards(ls){
       }
       continue;
     }
-    if(hz.type === 'spike') drawSpikeTeeth(hz.x, hz.y, hz.w, hz.h);
+    if(hz.type === 'spike'){
+      if(hz.flip) drawDownTeeth(hz.cx, hz.cy, hz.w, hz.h, COL.red);
+      else drawSpikeTeeth(hz.cx, hz.cy, hz.w, hz.h);
+      if(hz.path && hz.idle && hz.path.once){
+        // a resting "rusher": faint track shows where it will go
+        ctx.strokeStyle = 'rgba(224,50,60,0.18)'; ctx.lineWidth = 3; ctx.setLineDash([6, 8]);
+        ctx.beginPath(); ctx.moveTo(hz.path.x1+hz.w/2, hz.path.y1+hz.h+4); ctx.lineTo(hz.path.x2+hz.w/2, hz.path.y2+hz.h+4); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
   }
 }
 
@@ -1649,6 +1790,10 @@ function buildLevelGrid(){
     const num = document.createElement('span'); num.className = 'n'; num.textContent = unlocked ? String(lvl.id) : '\u{1F512}';
     const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = unlocked ? lvl.name : 'Locked';
     btn.appendChild(num); btn.appendChild(nm);
+    if(unlocked){
+      const d = document.createElement('span'); d.className = 'df df' + Math.min(8, lvl.difficulty || lvl.id); d.textContent = difficultyOf(lvl);
+      btn.appendChild(d);
+    }
     const st = save.levelStats[lvl.id];
     if(done && st && st.bestTime){
       const b = document.createElement('span'); b.className = 'bt'; b.textContent = Number(st.bestTime).toFixed(1) + 's';
@@ -1683,8 +1828,10 @@ function showToast(text){
   el.textContent = text;
   el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
 }
+const DIFFICULTY = ['', 'EASY', 'EASY', 'MEDIUM', 'MEDIUM', 'HARD', 'HARD', 'BRUTAL', 'IMPOSSIBLE'];
+function difficultyOf(data){ return DIFFICULTY[Math.max(1, Math.min(8, data.difficulty || data.id))] || ''; }
 function showLevelToast(data){
-  $('worldToastSub').textContent = 'LEVEL ' + data.id;
+  $('worldToastSub').textContent = 'LEVEL ' + data.id + ' \u00b7 ' + difficultyOf(data);
   $('worldToastMain').textContent = data.name;
   const el = $('worldToast');
   el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');

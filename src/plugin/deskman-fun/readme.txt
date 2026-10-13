@@ -4,7 +4,7 @@ Tags: game, html5, canvas, platformer, shortcode
 Requires at least: 5.5
 Tested up to: 6.6
 Requires PHP: 7.2
-Stable tag: 1.3.0
+Stable tag: 1.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -13,7 +13,7 @@ Embed the deskman.fun stickman rage-bait platformer on any post or page with a s
 == Description ==
 
 Razebait is a minimalist 2D rage-bait platformer: a procedurally-animated stickman, physics-based momentum,
-moving/disappearing platforms, hidden traps, and five short levels designed to teach a lesson, break it, and teach it again. Everything
+moving/disappearing platforms, hidden traps, and eight short levels that ramp from easy to near-impossible, designed to teach a lesson, break it, and teach it again. Everything
 runs client-side on HTML5 Canvas — no external API calls, no server requirement beyond serving the files, and
 progress/settings are saved in the player's browser (localStorage).
 
@@ -76,6 +76,15 @@ with a mouse. In portrait the controls sit in their own band below the play area
 in landscape they are translucent and the camera keeps the start and exit clear of them.
 
 == Changelog ==
+
+= 1.4.0 =
+* Three new levels, each harder than the last: 6 "Slide" (hard), 7 "Panic" (brutal), 8 "The Devil" (impossible).
+* New traps: floors that slide away as you approach, spikes that rush at you, and low ceilings lined with spikes
+  that punish full jumps (tap jump to get through).
+* Difficulty labels (Easy → Impossible) in the level intro and on the Level Select tiles.
+* Levels 2, 3 and 4 retuned so difficulty rises steadily from level to level.
+* Players who already finished all five original levels find level 6 unlocked; Play continues there.
+* HUD buttons stay readable over dark scenery.
 
 = 1.3.0 =
 * Five redesigned levels (Trust, Disappearing Floor, Hidden, Don't Stop, Trust Nothing) with checkpoints, a chasing

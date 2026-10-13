@@ -125,7 +125,7 @@ body.admin-bar #deskman-fun-root .dgm-wrap-full #app{ top:32px; height:calc(100v
   background:var(--dgm-ink); color:var(--dgm-cream);
   border:none; display:flex; align-items:center; justify-content:center;
   cursor:pointer; font:600 18px/1 system-ui,sans-serif;
-  box-shadow:0 3px 0 #000;
+  box-shadow:0 3px 0 #000, 0 0 0 2px rgba(239,233,220,0.9);
   transition:transform .08s;
 }
 #deskman-fun-root .icon-btn:active{ transform:translateY(2px); box-shadow:0 1px 0 #000; }
@@ -337,3 +337,13 @@ body.admin-bar #deskman-fun-root .dgm-wrap-full #app{ top:32px; height:calc(100v
   #deskman-fun-root .toast-msg.show{ animation-duration:1.2s; }
   #deskman-fun-root .card{ transition:none; }
 }
+
+/* difficulty tags in level select */
+#deskman-fun-root .lvl-tile .df{ font-size:9px; font-weight:800; letter-spacing:.6px; padding:1px 6px; border-radius:6px; background:rgba(26,26,26,0.08); }
+#deskman-fun-root .lvl-tile .df5,
+#deskman-fun-root .lvl-tile .df6{ color:var(--dgm-red-dark); }
+#deskman-fun-root .lvl-tile .df7,
+#deskman-fun-root .lvl-tile .df8{ color:#fff; background:var(--dgm-red); }
+#deskman-fun-root .lvl-tile.done .df{ background:rgba(255,253,248,0.14); color:var(--dgm-cream); }
+#deskman-fun-root .lvl-tile.done .df7,
+#deskman-fun-root .lvl-tile.done .df8{ background:var(--dgm-red); color:#fff; }

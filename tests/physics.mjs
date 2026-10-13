@@ -78,7 +78,7 @@ export async function physics(page) {
     let rng = 12345;
     const rand = () => (rng = (rng * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
     const fuzz = [];
-    for (let li = 0; li < 5; li++) {
+    for (let li = 0; li < window.Razebait.levels.length; li++) {
       D.start(li); keysOff();
       let embedded = 0, nan = 0, deaths = 0, steps = 0, worst = 0;
       for (let s = 0; s < 120 * 90; s++) { // 90 simulated seconds
