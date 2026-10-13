@@ -45,7 +45,7 @@ const gameAssets = async () => page.evaluate(() => ({
   js: [...document.scripts].map(s => s.src).filter(s => /deskman-game\.js/.test(s)),
   css: [...document.querySelectorAll('link[rel=stylesheet]')].map(l => l.href).filter(h => /deskman-game\.css/.test(h)),
   roots: document.querySelectorAll('#deskman-fun-root').length,
-  version: window.Razebait ? window.Razebait.version : null
+  version: window.DeskmanFun ? window.DeskmanFun.version : null
 }));
 
 /* ---------- Phase 1: the live site on v1.2.0 ---------- */
@@ -193,7 +193,7 @@ check('browser (logged in): no JS errors or failed requests from game files', co
   await v.goto(BASE + '/');
   await v.click('#btnPlay');
   await v.keyboard.down('ArrowRight'); await v.waitForTimeout(1500); await v.keyboard.up('ArrowRight');
-  const state = await v.evaluate(() => window.Razebait.getState());
+  const state = await v.evaluate(() => window.DeskmanFun.getState());
   check('visitor: game plays on the live front page', ['playing', 'dead'].includes(state), state);
   await v.screenshot({path: SHOTS + '/wp-visitor-playing.png'});
   check('visitor: no console errors, JS errors or HTTP errors on any front-end page', strict.length === 0, strict.slice(0, 8));

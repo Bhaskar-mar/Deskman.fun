@@ -9,7 +9,7 @@ This version is the gameplay upgrade. The features below were **not** implemente
   * Loading validates every field, keeps unknown fields written by other versions, and never lowers progress.
 * **Level unlocks**: clearing level N unlocks N+1. The Level Select grid shows locked, cleared and current levels, plus best times.
 * **Level data** is declarative (`LEVELS` in `src/game/deskman-game.js`), so adding levels is a data change.
-* **Read-only JS API**, `window.Razebait`, for future integrations:
+* **Read-only JS API**, `window.DeskmanFun`, for future integrations:
   * `version` and `levels`;
   * `getProgress()`, which returns a copy of the save;
   * `getState()`.

@@ -1,5 +1,5 @@
 /*!
- * Razebait — deskman.fun rage-bait platformer engine.
+ * deskman.fun — rage-bait platformer engine.
  * Plain ES2017, no dependencies. Everything is scoped inside this IIFE so the
  * game can share a WordPress page with other scripts without name clashes.
  */
@@ -12,7 +12,7 @@ root.setAttribute('data-dgm-init','1');
 
 const $ = (id)=>document.getElementById(id);
 const GAME_VERSION = '1.6.0';
-const DEBUG = window.RAZEBAIT_DEBUG === true;
+const DEBUG = window.DESKMAN_DEBUG === true;
 
 /* =========================================================================
    STORAGE
@@ -636,8 +636,8 @@ function buildLevel(def){
    deathMessages:['Flight denied.','Faster. Smaller. Now.'], completionMessage:'Escaped. Again.'},
   {id:29, name:'LAST BREATH', chase:360, segments:['rusher:620','island:225:95','tiles:6:90:40','ceiling','slide:240','island:230:90','gap:240','fake','rusher:620','ceiling','island:230:90','hidden','gap:240'], exit:'collapse',
    deathMessages:['Out of breath.','One more level after this. If you live.'], completionMessage:'Breathe. Then do the last one.'},
-  {id:30, name:'RAZEBAIT', taunt:'this is the end.', segments:['hidden','island:230:95','slide:240','rusher:620','moving:440:ceil','crusher','ceiling','island:230:90','saw:320','tiles:6:90:35','fake','vsaw','island:235:90','slide:245','ceiling','hidden','island:235:90','gap:245','ceiling','island:235:85','rusher:640','island:240:85'], exit:'collapse',
-   deathMessages:['Raze. Bait. Repeat.','The final lie.','Everything you learned. Everything.'], completionMessage:'You beat Razebait. All thirty levels. Nothing here can stop you now.'}
+  {id:30, name:'DESKMAN', taunt:'this is the end.', segments:['hidden','island:230:95','slide:240','rusher:620','moving:440:ceil','crusher','ceiling','island:230:90','saw:320','tiles:6:90:35','fake','vsaw','island:235:90','slide:245','ceiling','hidden','island:235:90','gap:245','ceiling','island:235:85','rusher:640','island:240:85'], exit:'collapse',
+   deathMessages:['Run. Fail. Repeat.','The final lie.','Everything you learned. Everything.'], completionMessage:'You beat deskman.fun. All thirty levels. Nothing here can stop you now.'}
 ].forEach(def=>LEVELS.push(buildLevel(def)));
 
 /* =========================================================================
@@ -741,6 +741,7 @@ function makeLevelState(data){
 }
 
 function loadLevel(index){
+  hideClearBanner();
   currentLevelIndex = Math.max(0, Math.min(LEVELS.length-1, index));
   checkpointIndex = -1;
   attemptDeaths = 0;
@@ -816,11 +817,13 @@ window.addEventListener('keydown', (e)=>{
   if(e.ctrlKey || e.metaKey || e.altKey) return;
   const code = e.code;
 
-  if(gameState === 'won' && $('winOverlay').classList.contains('show')){
-    if(code === 'Enter' || code === 'Space' || code === 'ArrowRight' || code === 'KeyD'){
+  if(gameState === 'won' && !anyOverlayOpen()){
+    // no popup: the next level starts by itself; Jump/Enter skips the wait
+    if(code === 'Enter' || code === 'Space' || code === 'ArrowUp' || code === 'KeyW'){
       e.preventDefault();
-      if(!e.repeat) goNextFromWin();
+      if(!e.repeat && levelState.winT > 0.3) advanceAfterWin();
     }
+    if(code === 'Escape' || code === 'KeyP'){ e.preventDefault(); openMenu(); }
     return;
   }
   if(anyOverlayOpen()){
@@ -1444,33 +1447,40 @@ function triggerWin(){
 
   if(isFinale){ Sound.finale(); vibrate(HAPTIC.strong); }
   else { Sound.victory(); vibrate(HAPTIC.small); }
-  $('winMsg').textContent = data.completionMessage || ' ';
-  $('btnNext').hidden = isFinale;
-  $('btnWinMenu').hidden = !isFinale;
-  $('winTitle').textContent = isFinale ? 'ALL ' + LEVELS.length + ' LEVELS CLEARED' : 'LEVEL ' + data.id + ' CLEAR';
-  let stats = 'Time ' + t.toFixed(2) + 's' + (newBest && st.clears > 1 ? ' (best!)' : '') + ' · Deaths ' + attemptDeaths;
-  if(isFinale) stats += ' · Total deaths ' + save.totalDeaths;
-  $('winStats').textContent = stats;
-  $('winHint').textContent = touchUI ? '' : (isFinale ? 'Press Enter for level select' : 'Press Enter for the next level');
+  let stats = t.toFixed(2) + 's' + (newBest && st.clears > 1 ? ' \u00b7 BEST!' : '') + ' \u00b7 ' + attemptDeaths + (attemptDeaths === 1 ? ' death' : ' deaths');
   if(isFinale){
+    stats += ' \u00b7 ' + save.totalDeaths + ' total';
     const gx = ls.goal.x + ls.goal.w/2, gy = ls.goal.y + ls.goal.h/2;
     spawnConfetti(gx, gy);
     setTimeout(()=>spawnConfetti(gx, gy), 350);
   }
-  setTimeout(()=>{
-    if(gameState !== 'won') return;
-    showOverlay('winOverlay');
-    const focusBtn = isFinale ? $('btnWinMenu') : $('btnNext');
-    try{ focusBtn.focus({preventScroll:true}); }catch(e){}
-  }, 450);
+  showClearBanner(isFinale ? 'ALL ' + LEVELS.length + ' LEVELS CLEARED' : 'LEVEL ' + data.id + ' CLEAR', stats,
+    isFinale ? (data.completionMessage || '') : (touchUI ? 'Next level\u2026' : 'Next level\u2026  (Space to skip)'));
+  ls.winDelay = isFinale ? 4.2 : 1.35;
   updateHud();
 }
 
-function goNextFromWin(){
-  Sound.uiClick();
-  if(currentLevelIndex + 1 < LEVELS.length) loadLevel(currentLevelIndex + 1);
-  else openMenu();
+// After a clear the next level starts by itself (no popup to dismiss).
+// Level Select is always available from the pause menu / start screen.
+function advanceAfterWin(){
+  if(gameState !== 'won') return;
+  hideClearBanner();
+  if(currentLevelIndex + 1 < LEVELS.length){ loadLevel(currentLevelIndex + 1); return; }
+  // finished the whole game: back to the start screen
+  gameState = 'menu';
+  levelState = null;
+  $('startScreen').hidden = false;
+  animateIntro();
+  showToast('You beat every level. Pick any level to play again.');
 }
+function showClearBanner(title, stats, hint){
+  $('clearTitle').textContent = title;
+  $('clearStats').textContent = stats;
+  $('clearHint').textContent = hint;
+  const el = $('clearBanner');
+  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+}
+function hideClearBanner(){ $('clearBanner').classList.remove('show'); }
 
 /* =========================================================================
    LAYOUT / RENDERING
@@ -1889,9 +1899,10 @@ function computePose(p){
       pose.thighL = ampThigh*Math.sin(phase); pose.thighR = ampThigh*Math.sin(phase+Math.PI);
       pose.shinL = Math.max(0.05, ampShin*Math.sin(phase-1.1)); pose.shinR = Math.max(0.05, ampShin*Math.sin(phase+Math.PI-1.1));
       pose.armL = -ampArm*Math.sin(phase); pose.armR = -ampArm*Math.sin(phase+Math.PI);
-      pose.elbowL = 0.3+Math.max(0,0.5*Math.sin(phase+0.6)); pose.elbowR = 0.3+Math.max(0,0.5*Math.sin(phase+Math.PI+0.6));
+      // runners keep the elbows bent; more bend on the forward swing
+      pose.elbowL = 0.55+0.6*speedT+0.25*Math.sin(phase+0.6); pose.elbowR = 0.55+0.6*speedT+0.25*Math.sin(phase+Math.PI+0.6);
       pose.hipDrop = Math.abs(Math.sin(phase))*(1.5+4*speedT)*0.6 + shake*0.6;
-      pose.torsoLean = (0.05+0.26*speedT) + (p.accelLean||0) + shake*0.012;
+      pose.torsoLean = (0.08+0.3*speedT) + (p.accelLean||0) + shake*0.012;
       pose.headTilt = Math.sin(phase*2)*0.02*speedT - pose.torsoLean*0.3;
       break;
     }
@@ -1953,8 +1964,9 @@ function drawStickman(c, pose, lineW){
   c.lineWidth = lineW; c.lineCap = 'round'; c.lineJoin = 'round';
   const legL = limbEnd(0, hipY, pose.thighL, LEG_THIGH, pose.shinL, LEG_SHIN);
   const legR = limbEnd(0, hipY, pose.thighR, LEG_THIGH, pose.shinR, LEG_SHIN);
-  const armL = limbEnd(shX, shY, pose.armL, ARM_UPPER, pose.elbowL, ARM_FORE);
-  const armR = limbEnd(shX, shY, pose.armR, ARM_UPPER, pose.elbowR, ARM_FORE);
+  // Elbows flex forward (opposite to knees), so the bend is applied the other way.
+  const armL = limbEnd(shX, shY, pose.armL, ARM_UPPER, -pose.elbowL, ARM_FORE);
+  const armR = limbEnd(shX, shY, pose.armR, ARM_UPPER, -pose.elbowR, ARM_FORE);
   c.beginPath();
   c.moveTo(0, hipY); c.lineTo(shX, shY);
   c.moveTo(0, hipY); c.lineTo(legL.kx, legL.ky); c.lineTo(legL.ex, legL.ey);
@@ -2108,7 +2120,6 @@ function closeMenu(){
   Sound.uiClick();
   hideAllOverlays();
   if(!levelState){ return; }
-  if(gameState === 'won'){ showOverlay('winOverlay'); return; }
   if(gameState === 'paused'){ gameState = levelState.player.dead ? 'dead' : 'playing'; lastFrame = 0; }
 }
 
@@ -2136,9 +2147,6 @@ function bindClick(id, fn){ $(id).addEventListener('click', fn); }
 bindClick('btnRestart', ()=>{ Sound.unlock(); Sound.uiClick(); if(levelState && gameState !== 'menu'){ restartLevel(); } });
 bindClick('btnSettings', openSettings);
 bindClick('btnPause', ()=>{ Sound.unlock(); togglePause(); });
-bindClick('btnNext', goNextFromWin);
-bindClick('btnReplay', ()=>{ Sound.uiClick(); attemptDeaths = 0; restartLevel(); });
-bindClick('btnWinMenu', ()=>{ Sound.uiClick(); openMenu(); });
 bindClick('btnResume', resumeGame);
 bindClick('btnPauseRestart', ()=>{ Sound.uiClick(); restartLevel(); });
 bindClick('btnPauseSettings', openSettings);
@@ -2204,6 +2212,7 @@ function simStep(dt){
   } else if(gameState === 'won'){
     ls.winT += dt;
     ls.player.t += dt;
+    if(ls.winT >= (ls.winDelay || 1.35) && !anyOverlayOpen()) advanceAfterWin();
   }
   if(ls.flash > 0) ls.flash = Math.max(0, ls.flash - dt*6);
   if(gameState !== 'paused'){
@@ -2280,7 +2289,7 @@ if(DEBUG){
     respawn, restartLevel, layout
   };
 }
-window.Razebait = api;
+window.DeskmanFun = api;
 
 /* =========================================================================
    BOOT

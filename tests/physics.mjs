@@ -7,7 +7,7 @@ const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
 
 export async function physics(page) {
   return page.evaluate(() => {
-    const D = window.Razebait.debug;
+    const D = window.DeskmanFun.debug;
     D.setLoopPaused(false); // frame() drives the accumulator directly
     const results = {};
     const keysOff = () => { D.press('left', false); D.press('right', false); D.press('jump', false); };
@@ -78,7 +78,7 @@ export async function physics(page) {
     let rng = 12345;
     const rand = () => (rng = (rng * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
     const fuzz = [];
-    for (let li = 0; li < window.Razebait.levels.length; li++) {
+    for (let li = 0; li < window.DeskmanFun.levels.length; li++) {
       D.start(li); keysOff();
       let embedded = 0, nan = 0, deaths = 0, steps = 0, worst = 0;
       for (let s = 0; s < 120 * 45; s++) { // 45 simulated seconds per level (30 levels)

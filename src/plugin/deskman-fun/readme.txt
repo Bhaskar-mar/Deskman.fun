@@ -1,4 +1,4 @@
-=== deskman.fun — Razebait Rage-Bait Platformer ===
+=== deskman.fun — Rage-Bait Platformer ===
 Contributors: deskmanfun
 Tags: game, html5, canvas, platformer, shortcode
 Requires at least: 5.5
@@ -12,7 +12,7 @@ Embed the deskman.fun stickman rage-bait platformer on any post or page with a s
 
 == Description ==
 
-Razebait is a minimalist 2D rage-bait platformer: a procedurally-animated stickman, physics-based momentum,
+deskman.fun is a minimalist 2D rage-bait platformer: a procedurally-animated stickman, physics-based momentum,
 moving/disappearing platforms, hidden traps, and thirty short levels that ramp from easy to near-impossible, designed to teach a lesson, break it, and teach it again. Everything
 runs client-side on HTML5 Canvas — no external API calls, no server requirement beyond serving the files, and
 progress/settings are saved in the player's browser (localStorage).
@@ -88,7 +88,7 @@ in landscape they are translucent and the camera keeps the start and exit clear 
 
 = 1.5.0 =
 * 22 new levels: 30 in total, ordered by measured difficulty, across seven tiers (Easy, Medium, Hard, Brutal,
-  Insane, Impossible, Devil). Level 30, "Razebait", is the finale.
+  Insane, Impossible, Devil). Level 30, "Deskman", is the finale.
 * New precision obstacle: islands (gap, narrow pillar, gap).
 * Level Select scrolls to fit 30 levels on any screen; difficulty tags are colour-coded by tier.
 * Every level is verified beatable by automated play-throughs; checkpoints in all long non-chase levels.

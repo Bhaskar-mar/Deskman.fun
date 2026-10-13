@@ -54,7 +54,7 @@ These are built from obstacle segments by `buildLevel()` in `src/game/deskman-ga
 | 27 | GAUNTLET | IMPOSSIBLE | 13 | slide, island, rusher, moving, crusher, ceiling, saw, tiles, hidden, gap | — | collapse |
 | 28 | FLIGHT | IMPOSSIBLE | 10 | tiles, ceiling, island, rusher, slide, gap, hidden | wall 355 | collapse |
 | 29 | LAST BREATH | IMPOSSIBLE | 13 | rusher, island, tiles, ceiling, slide, gap, fake, hidden | wall 360 | collapse |
-| 30 | RAZEBAIT | DEVIL | 22 | hidden, island, slide, rusher, moving, crusher, ceiling, saw, tiles, fake, vsaw, gap | — | collapse |
+| 30 | DESKMAN | DEVIL | 22 | hidden, island, slide, rusher, moving, crusher, ceiling, saw, tiles, fake, vsaw, gap | — | collapse |
 
 Rules that hold everywhere, so traps stay fair:
 * Red means lethal: spikes, saws, crusher teeth, the chasing wall.

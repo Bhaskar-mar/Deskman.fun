@@ -1,4 +1,4 @@
-# Razebait (deskman.fun) — Repository Audit
+# deskman.fun (deskman.fun) — Repository Audit
 
 Audit of the code as uploaded in commit `0a62631` (plugin and theme v1.2.0), done before any changes.
 

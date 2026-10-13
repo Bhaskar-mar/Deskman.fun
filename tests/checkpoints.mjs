@@ -15,7 +15,7 @@ const HAND = {
 
 export async function checkpoints(page) {
   const routes = await levelRoutes(page);
-  const cps = await page.evaluate(() => window.Razebait.debug.LEVELS.map(l => l.checkpoints || []));
+  const cps = await page.evaluate(() => window.DeskmanFun.debug.LEVELS.map(l => l.checkpoints || []));
   const out = [];
   for (let i = 0; i < cps.length; i++) {
     for (let k = 0; k < cps[i].length; k++) {

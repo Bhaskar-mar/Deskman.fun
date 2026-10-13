@@ -20,7 +20,7 @@ define("WP_INSTALLING", true);
 $_SERVER["HTTP_HOST"] = "127.0.0.1:'"$PORT"'"; $_SERVER["REQUEST_URI"] = "/";
 require "'"$T"'/wp-load.php";
 require_once ABSPATH . "wp-admin/includes/upgrade.php";
-wp_install("Razebait Test", "admin", "admin@example.com", true, "", "admin-test-pass");
+wp_install("deskman.fun Test", "admin", "admin@example.com", true, "", "admin-test-pass");
 update_option("siteurl", "http://127.0.0.1:'"$PORT"'"); update_option("home", "http://127.0.0.1:'"$PORT"'");
 update_option("permalink_structure", "/%postname%/");
 echo "WordPress ", $GLOBALS["wp_version"], " installed\n";' 2>&1 | grep -v sendmail

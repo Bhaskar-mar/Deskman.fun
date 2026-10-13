@@ -1,4 +1,4 @@
-# Razebait — deskman.fun
+# deskman.fun — deskman.fun
 
 A short, surprise-driven stickman platformer (30 levels, easy → devil) delivered as a WordPress plugin (`deskman-fun`, shortcode `[deskman_game]`) and a matching theme (`deskman-fun-theme`).
 
@@ -50,7 +50,7 @@ node tests/run-all.mjs            # play-throughs, traps, physics, browser integ
 npx eslint src/game               # lint (config in eslint.config.mjs)
 ```
 
-Open `dist/preview/full.html` or `dist/preview/embed.html` in a browser to play without WordPress. Add `?debug=1` to expose the deterministic test hooks (`window.Razebait.debug`). The hooks are off unless `window.RAZEBAIT_DEBUG === true` is set before the script loads; WordPress pages never set it.
+Open `dist/preview/full.html` or `dist/preview/embed.html` in a browser to play without WordPress. Add `?debug=1` to expose the deterministic test hooks (`window.DeskmanFun.debug`). The hooks are off unless `window.DESKMAN_DEBUG === true` is set before the script loads; WordPress pages never set it.
 
 WordPress end-to-end test (real WordPress + SQLite + PHP built-in server):
 

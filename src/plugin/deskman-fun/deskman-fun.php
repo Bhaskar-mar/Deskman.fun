@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name:       deskman.fun — Razebait Rage-Bait Platformer
+ * Plugin Name:       deskman.fun — Rage-Bait Platformer
  * Plugin URI:        https://deskman.fun
  * Description:       Embeds the deskman.fun stickman platformer via the [deskman_game] shortcode. Use fullscreen="yes" for a dedicated play page, or omit it for a responsive 16:9 box that sits inline in a post or page.
  * Version:           1.6.0

@@ -1,4 +1,4 @@
-# Razebait 1.6.0: install guide
+# deskman.fun 1.6.0: install guide
 
 Two files, both for WordPress 5.5+ and PHP 7.2+:
 
@@ -13,7 +13,7 @@ Two files, both for WordPress 5.5+ and PHP 7.2+:
 2. **Plugin:** go to *Plugins → Add New → Upload Plugin*, choose `deskman-fun-1.6.0.zip`, then *Install Now*. WordPress says the plugin is already installed; click **Replace current with uploaded**.
 3. **Theme:** go to *Appearance → Themes → Add New → Upload Theme*, choose `deskman-fun-theme-1.6.0.zip`, then **Replace current with uploaded**.
 4. If you use a caching plugin or CDN, **purge the cache** once.
-5. Open your Play page and press **Ctrl+F5** (Cmd+Shift+R on Mac). The start screen shows **RAZEBAIT**, and Level Select lists 30 levels.
+5. Open your Play page and press **Ctrl+F5** (Cmd+Shift+R on Mac). The start screen shows **DESKMAN**, and Level Select lists 30 levels.
 
 Nothing else changes: your `/play` page, homepage setting and shortcode stay as they are. Players keep their progress, which is saved in their own browser.
 

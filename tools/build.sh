@@ -34,10 +34,10 @@ for mode in full embed; do
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Razebait preview ($mode)</title>
+<title>deskman.fun preview ($mode)</title>
 <style>body{font-family:Georgia,serif;margin:0;padding:16px;background:#faf7f0;color:#222}.btn{border:1px solid #888}*{box-sizing:content-box}</style>
 <link rel="stylesheet" href="../build/deskman-fun/assets/css/deskman-game.css">
-<script>window.RAZEBAIT_DEBUG = /[?&]debug=1/.test(location.search);</script>
+<script>window.DESKMAN_DEBUG = /[?&]debug=1/.test(location.search);</script>
 </head><body>
 <h1>Host page heading</h1><p class="host-p">Text above the game. <button class="btn" id="hostBtn">host button</button></p>
 <div id="deskman-fun-root"><div class="$WRAP" style="$STYLE">

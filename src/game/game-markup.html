@@ -1,11 +1,11 @@
 <div id="app" class="dgm-app">
   <div id="stage">
-    <canvas id="gameCanvas" aria-label="Razebait game area" role="img"></canvas>
+    <canvas id="gameCanvas" aria-label="deskman.fun game area" role="img"></canvas>
 
     <div id="hud">
       <div class="hud-top">
         <div class="logo">
-          <div class="title">RAZE<span>BAIT</span></div>
+          <div class="title">deskman<span>.fun</span></div>
           <div class="tagline">RUN. FAIL. REPEAT.</div>
         </div>
         <div class="level-card" id="levelCard">
@@ -22,6 +22,7 @@
       <div class="progress-pill"><span id="progressText">1 / 30</span><span class="deaths" id="deathsText">Deaths: 0</span></div>
       <div class="world-toast" id="worldToast" aria-live="polite"><span class="w1" id="worldToastSub">LEVEL 1</span><span id="worldToastMain">TRUST</span></div>
       <div class="toast-msg" id="toastMsg" aria-live="polite"></div>
+      <div class="clear-banner" id="clearBanner" aria-live="polite"><span class="cb-title" id="clearTitle">LEVEL 1 CLEAR</span><span class="cb-stats" id="clearStats"></span><span class="cb-hint" id="clearHint"></span></div>
     </div>
 
     <div class="controls" id="touchControls">
@@ -30,21 +31,6 @@
         <button type="button" class="ctrl-btn" id="btnRight" aria-label="Move right">&#8594;</button>
       </div>
       <button type="button" class="jump-btn" id="btnJump" aria-label="Jump">&#8593;<span>JUMP</span></button>
-    </div>
-
-    <!-- Win overlay -->
-    <div class="overlay dim" id="winOverlay" role="dialog" aria-modal="true" aria-labelledby="winTitle">
-      <div class="card">
-        <h2 id="winTitle">Level Complete!</h2>
-        <p class="msg" id="winMsg">&nbsp;</p>
-        <p class="stats" id="winStats"></p>
-        <div class="row">
-          <button type="button" class="btn primary" id="btnNext">NEXT LEVEL &#8594;</button>
-          <button type="button" class="btn ghost" id="btnReplay">REPLAY</button>
-          <button type="button" class="btn ghost" id="btnWinMenu" hidden>LEVEL SELECT</button>
-        </div>
-        <p class="hint" id="winHint">Press Enter to continue</p>
-      </div>
     </div>
 
     <!-- Pause overlay -->
@@ -85,7 +71,7 @@
 
     <!-- Start screen -->
     <div id="startScreen">
-      <div class="bigtitle">RAZE<span>BAIT</span></div>
+      <div class="bigtitle">deskman<span>.fun</span></div>
       <div class="bigtag">RUN. FAIL. REPEAT.</div>
       <canvas id="introCanvas" width="200" height="90"></canvas>
       <div class="menu-row">

@@ -65,16 +65,16 @@ export async function integration(browser, base) {
     // Typing in a comment box while the game is running.
     await p.click('#btnPlay'); await p.waitForTimeout(100);
     await p.keyboard.down('ArrowRight'); await p.waitForTimeout(400); await p.keyboard.up('ArrowRight');
-    const moved = await p.evaluate(() => window.Razebait.debug.level().player.x);
+    const moved = await p.evaluate(() => window.DeskmanFun.debug.level().player.x);
     check('embed: arrow keys control the game after clicking it', moved > 120, {x: moved});
     await p.click('#comment');
     await p.keyboard.type('wasd jump!');
     const val = await p.inputValue('#comment');
     check('embed: typing in a textarea is never intercepted', val === 'wasd jump!', {val});
     await p.waitForTimeout(400); // let any deceleration finish
-    const xBefore = await p.evaluate(() => window.Razebait.debug.level().player.x);
+    const xBefore = await p.evaluate(() => window.DeskmanFun.debug.level().player.x);
     await p.click('h1'); await p.keyboard.down('KeyD'); await p.waitForTimeout(250); await p.keyboard.up('KeyD');
-    const xAfter = await p.evaluate(() => window.Razebait.debug.level().player.x);
+    const xAfter = await p.evaluate(() => window.DeskmanFun.debug.level().player.x);
     check('embed: keys ignored after clicking elsewhere on the page', Math.abs(xAfter - xBefore) < 1, {xBefore, xAfter});
     await p.screenshot({path: SHOTS + '/embed-desktop.png', fullPage: false});
     check('embed: no console errors', errs.length === 0, errs);
@@ -100,10 +100,10 @@ export async function integration(browser, base) {
     await p.waitForTimeout(150);
     await p.screenshot({path: `${SHOTS}/${name}-start.png`});
     await p.click('#btnPlay');
-    await p.evaluate(() => { const D = window.Razebait.debug; D.setLoopPaused(true); D.start(2); D.step(60); });
+    await p.evaluate(() => { const D = window.DeskmanFun.debug; D.setLoopPaused(true); D.start(2); D.step(60); });
     await p.waitForTimeout(120);
     const m = await p.evaluate(() => {
-      const D = window.Razebait.debug, v = D.view(), pl = D.level().player;
+      const D = window.DeskmanFun.debug, v = D.view(), pl = D.level().player;
       const stage = document.getElementById('stage').getBoundingClientRect();
       const rect = id => { const e = document.getElementById(id); const r = e.getBoundingClientRect(); return {l: r.left, t: r.top, r: r.right, b: r.bottom, vis: getComputedStyle(e).display !== 'none' && r.width > 0}; };
       const camX = D.camera().x;
@@ -121,7 +121,7 @@ export async function integration(browser, base) {
     });
     await p.screenshot({path: `${SHOTS}/${name}-play.png`});
     const goalCss = await p.evaluate(() => {
-      const D = window.Razebait.debug; const ls = D.level(); const v = D.view();
+      const D = window.DeskmanFun.debug; const ls = D.level(); const v = D.view();
       ls.player.x = ls.data.width - 60; D.step(1); D.layout();
       for (let i = 0; i < 400; i++) D.step(1); // let the camera settle at the level end
       const cam = D.camera().x, g = ls.goal, st = document.getElementById('stage').getBoundingClientRect();
@@ -154,14 +154,14 @@ export async function integration(browser, base) {
     const cdp = await ctx.newCDPSession(p);
     const center = async sel => p.evaluate(s => { const r = document.querySelector(s).getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2}; }, sel);
     const R = await center('#btnRight'), L = await center('#btnLeft'), J = await center('#btnJump');
-    const x0 = await p.evaluate(() => window.Razebait.debug.level().player.x);
+    const x0 = await p.evaluate(() => window.DeskmanFun.debug.level().player.x);
     await cdp.send('Input.dispatchTouchEvent', {type: 'touchStart', touchPoints: [{x: R.x, y: R.y, id: 1}]});
     await p.waitForTimeout(500);
-    const x1 = await p.evaluate(() => window.Razebait.debug.level().player.x);
+    const x1 = await p.evaluate(() => window.DeskmanFun.debug.level().player.x);
     // second finger on jump while still holding right
     await cdp.send('Input.dispatchTouchEvent', {type: 'touchStart', touchPoints: [{x: R.x, y: R.y, id: 1}, {x: J.x, y: J.y, id: 2}]});
     await p.waitForTimeout(90);
-    const air = await p.evaluate(() => { const pl = window.Razebait.debug.level().player; return {vy: pl.vy, grounded: pl.grounded}; });
+    const air = await p.evaluate(() => { const pl = window.DeskmanFun.debug.level().player; return {vy: pl.vy, grounded: pl.grounded}; });
     await cdp.send('Input.dispatchTouchEvent', {type: 'touchEnd', touchPoints: [{x: R.x, y: R.y, id: 1}]});
     await p.waitForTimeout(500);
     // slide from right to left without lifting
@@ -169,10 +169,10 @@ export async function integration(browser, base) {
     await p.waitForTimeout(100);
     await cdp.send('Input.dispatchTouchEvent', {type: 'touchMove', touchPoints: [{x: L.x, y: L.y, id: 3}]});
     await p.waitForTimeout(80);
-    const keysSlide = await p.evaluate(() => Object.assign({}, window.Razebait.debug.keys));
+    const keysSlide = await p.evaluate(() => Object.assign({}, window.DeskmanFun.debug.keys));
     await cdp.send('Input.dispatchTouchEvent', {type: 'touchEnd', touchPoints: []});
     await p.waitForTimeout(80);
-    const keysEnd = await p.evaluate(() => Object.assign({}, window.Razebait.debug.keys));
+    const keysEnd = await p.evaluate(() => Object.assign({}, window.DeskmanFun.debug.keys));
     check('touch: holding → moves right', x1 - x0 > 80, {x0, x1});
     check('touch: jump works while holding a direction (multi-touch)', !air.grounded && air.vy < 0, air);
     check('touch: sliding thumb from → to ← switches direction', keysSlide.left && !keysSlide.right, keysSlide);
@@ -188,39 +188,44 @@ export async function integration(browser, base) {
     await p.click('#btnPlay'); await p.waitForTimeout(100);
     await p.keyboard.down('ArrowRight');
     let died = false; const t0 = Date.now();
-    while (Date.now() - t0 < 4000) { if (await p.evaluate(() => window.Razebait.getState()) === 'dead') { died = true; break; } await p.waitForTimeout(20); }
+    while (Date.now() - t0 < 4000) { if (await p.evaluate(() => window.DeskmanFun.getState()) === 'dead') { died = true; break; } await p.waitForTimeout(20); }
     await p.keyboard.up('ArrowRight');
     const overlayOnDeath = await p.evaluate(() => !!document.querySelector('#deskman-fun-root .overlay.show'));
     const tDead = Date.now();
     let back = false;
-    while (Date.now() - tDead < 1500) { if (await p.evaluate(() => window.Razebait.getState()) === 'playing') { back = true; break; } await p.waitForTimeout(20); }
+    while (Date.now() - tDead < 1500) { if (await p.evaluate(() => window.DeskmanFun.getState()) === 'playing') { back = true; break; } await p.waitForTimeout(20); }
     const respawnMs = Date.now() - tDead;
     check('death: no blocking overlay', died && !overlayOnDeath);
     check('death: auto-respawns quickly (<900ms)', back && respawnMs < 900, {respawnMs});
     // skip with jump
     await p.keyboard.down('ArrowRight');
-    const t1 = Date.now(); while (Date.now() - t1 < 4000) { if (await p.evaluate(() => window.Razebait.getState()) === 'dead') break; await p.waitForTimeout(15); }
+    const t1 = Date.now(); while (Date.now() - t1 < 4000) { if (await p.evaluate(() => window.DeskmanFun.getState()) === 'dead') break; await p.waitForTimeout(15); }
     await p.keyboard.up('ArrowRight');
     await p.waitForTimeout(160);
     const tSkip = Date.now(); await p.keyboard.press('Space');
     await p.waitForTimeout(30);
-    check('death: jump key skips the respawn wait', await p.evaluate(() => window.Razebait.getState()) === 'playing', {ms: Date.now() - tSkip});
+    check('death: jump key skips the respawn wait', await p.evaluate(() => window.DeskmanFun.getState()) === 'playing', {ms: Date.now() - tSkip});
 
     await p.keyboard.press('Escape');
-    const paused = await p.evaluate(() => window.Razebait.getState() === 'paused' && document.getElementById('pauseOverlay').classList.contains('show'));
+    const paused = await p.evaluate(() => window.DeskmanFun.getState() === 'paused' && document.getElementById('pauseOverlay').classList.contains('show'));
     await p.keyboard.press('Escape');
-    const resumed = await p.evaluate(() => window.Razebait.getState() === 'playing' && !document.querySelector('#deskman-fun-root .overlay.show'));
+    const resumed = await p.evaluate(() => window.DeskmanFun.getState() === 'playing' && !document.querySelector('#deskman-fun-root .overlay.show'));
     check('pause: Esc pauses and resumes', paused && resumed);
 
-    // win via debug teleport into the door, then Enter → level 2
-    await p.evaluate(() => { const D = window.Razebait.debug; const ls = D.level(); ls.goal.x = ls.player.x - 18; ls.goal.y = ls.player.y - 38; });
-    await p.waitForTimeout(700);
-    const winShown = await p.evaluate(() => document.getElementById('winOverlay').classList.contains('show'));
-    await p.keyboard.press('Enter'); await p.waitForTimeout(100);
-    const lvl = await p.evaluate(() => window.Razebait.debug.level().data.id);
-    check('win: overlay shown, Enter advances to level 2', winShown && lvl === 2, {winShown, lvl});
-    const prog = await p.evaluate(() => window.Razebait.getProgress());
-    check('win: progress saved (level 2 unlocked)', prog.unlockedLevel >= 2 && prog.completedLevels.includes(1), prog);
+    // win via debug teleport into the door: no popup, the next level starts by itself
+    await p.evaluate(() => { const D = window.DeskmanFun.debug; const ls = D.level(); ls.goal.x = ls.player.x - 18; ls.goal.y = ls.player.y - 38; });
+    await p.waitForTimeout(400);
+    const midWin = await p.evaluate(() => ({state: window.DeskmanFun.getState(), overlay: !!document.querySelector('#deskman-fun-root .overlay.show'), banner: document.getElementById('clearBanner').classList.contains('show')}));
+    await p.waitForTimeout(1500);
+    const lvl = await p.evaluate(() => window.DeskmanFun.debug.level().data.id);
+    check('win: no popup, a clear banner shows and level 2 starts by itself', midWin.state === 'won' && !midWin.overlay && midWin.banner && lvl === 2, {midWin, lvl});
+    // Space skips the wait
+    await p.evaluate(() => { const D = window.DeskmanFun.debug; const ls = D.level(); ls.goal.x = ls.player.x - 18; ls.goal.y = ls.player.y - 38; });
+    await p.waitForTimeout(500);
+    await p.keyboard.press('Space'); await p.waitForTimeout(120);
+    check('win: Space skips straight to the next level', await p.evaluate(() => window.DeskmanFun.debug.level().data.id) === 3);
+    const prog = await p.evaluate(() => window.DeskmanFun.getProgress());
+    check('win: progress saved (levels 2-3 unlocked)', prog.unlockedLevel >= 3 && prog.completedLevels.includes(1) && prog.completedLevels.includes(2), prog);
     await ctx.close();
   }
 
@@ -249,7 +254,7 @@ export async function integration(browser, base) {
     const tiles = await p.evaluate(() => [...document.querySelectorAll('#levelGrid .lvl-tile')].map(t => !t.disabled));
     check('save v1: existing unlocks shown (levels 1-4 open, 5-30 locked)', JSON.stringify(tiles) === JSON.stringify(Array.from({length: 30}, (_, i) => i < 4)), tiles);
     // complete level 1 again → unlockedLevel must not drop to 2
-    await p.evaluate(() => { const D = window.Razebait.debug; D.start(0); const ls = D.level(); ls.goal.x = ls.player.x - 18; ls.goal.y = ls.player.y - 38; D.step(2); });
+    await p.evaluate(() => { const D = window.DeskmanFun.debug; D.start(0); const ls = D.level(); ls.goal.x = ls.player.x - 18; ls.goal.y = ls.player.y - 38; D.step(2); });
     const stored = await p.evaluate(() => JSON.parse(localStorage.getItem('deskmanfun_save_v1')));
     check('save v1: replaying an old level never lowers progress', stored.unlockedLevel === 4, stored);
     check('save v1: unknown fields and settings preserved', stored.futureField && stored.futureField.keep === 'me' && stored.settings.sound === false && stored.settings.reducedMotion === true && stored.totalDeaths === 77, stored);
@@ -261,11 +266,11 @@ export async function integration(browser, base) {
     const tiles8 = await p.evaluate(() => [...document.querySelectorAll('#levelGrid .lvl-tile')].map(t => !t.disabled));
     await p.click('#btnCloseMenu');
     await p.click('#btnPlay');
-    const lvlAfter = await p.evaluate(() => window.Razebait.debug.level().data.id);
+    const lvlAfter = await p.evaluate(() => window.DeskmanFun.debug.level().data.id);
     check('new levels: finishing the old 5 unlocks level 6 and Play continues there', JSON.stringify(tiles8) === JSON.stringify(Array.from({length: 30}, (_, i) => i < 6)) && lvlAfter === 6, {tiles8, lvlAfter});
     await p.evaluate(() => localStorage.setItem('deskmanfun_save_v1', '{not json'));
     await p.reload(); await p.waitForTimeout(100);
-    check('save: corrupted data falls back to defaults without errors', errs.length === 0 && (await p.evaluate(() => window.Razebait.getProgress().unlockedLevel)) === 1, errs);
+    check('save: corrupted data falls back to defaults without errors', errs.length === 0 && (await p.evaluate(() => window.DeskmanFun.getProgress().unlockedLevel)) === 1, errs);
     await ctx.close();
   }
   return results;
