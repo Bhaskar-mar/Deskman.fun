@@ -594,25 +594,25 @@ function buildLevel(def){
 }
 
 [
-  {id:9,  name:'LEAP OF FAITH', taunt:'mind the gaps.', segments:['gap:200','island:180:150','spikes:1','gap:210','hidden','island:190:140','step','gap:215'], exit:'plain',
+  {id:9,  name:'LEAP OF FAITH', taunt:'mind the gaps.', segments:['gap:200','island:180:150','spikes:1','gap:210','hidden','island:190:140','step','island:195:130','gap:215','island:200:125'], exit:'plain',
    deathMessages:['The gap was bigger than it looked.','Jump earlier. No, later.'], completionMessage:'Faith rewarded. For now.'},
-  {id:10, name:'CRUMBLE', taunt:'keep moving.', segments:['tiles:3:120:120','gap:210','island:190:140','tiles:4:100:100','spikes:2','fake','tiles:5:100:90','gap:215'], exit:'plain',
+  {id:10, name:'CRUMBLE', taunt:'keep moving.', segments:['tiles:3:120:120','gap:210','island:190:140','tiles:4:100:100','spikes:2','fake','tiles:5:100:90','island:195:130','gap:215','island:200:125'], exit:'plain',
    deathMessages:['You hesitated. It crumbled.','Floors are temporary.'], completionMessage:'You never let the ground get comfortable.'},
-  {id:11, name:'RUSH HOUR', taunt:'look ahead.', segments:['rusher:500','island:190:140','rusher:540','hidden','gap:215','rusher:560','spikes:2','island:195:135'], exit:'fake',
+  {id:11, name:'RUSH HOUR', taunt:'look ahead.', segments:['rusher:500','island:190:140','rusher:540','hidden','gap:215','rusher:560','spikes:2','island:195:135','island:200:125','gap:220'], exit:'fake',
    deathMessages:['It was in a hurry.','Spikes have places to be.'], completionMessage:'Traffic survived.'},
-  {id:12, name:'LOW CEILING', taunt:'short hops.', segments:['ceiling','gap:215','ceiling','island:195:135','rusher:540','ceiling','step','gap:220'], exit:'fake',
+  {id:12, name:'LOW CEILING', taunt:'short hops.', segments:['ceiling','gap:215','ceiling','island:195:135','rusher:540','ceiling','step','island:200:125','gap:220','island:200:120'], exit:'fake',
    deathMessages:['Too much jump.','The ceiling bites.'], completionMessage:'You learned restraint. Mostly.'},
-  {id:13, name:'SLIP', taunt:'the floor is shy.', segments:['slide:200','spikes:1','slide:210','island:195:130','tiles:4:100:90','slide:220','hidden','island:200:130'], exit:'fake',
+  {id:13, name:'SLIP', taunt:'the floor is shy.', segments:['slide:200','spikes:1','slide:210','island:195:130','tiles:4:100:90','slide:220','hidden','island:200:130','island:205:120','gap:220'], exit:'fake',
    deathMessages:['It slid. You did not.','Floors move here.'], completionMessage:'You kept your footing. Barely.'},
-  {id:14, name:'SAW MILL', taunt:'timing.', segments:['saw:240','island:200:130','vsaw','gap:220','saw:270','spikes:2','vsaw','island:200:125','hidden'], exit:'fake',
+  {id:14, name:'SAW MILL', taunt:'timing.', segments:['saw:240','island:200:130','vsaw','gap:220','saw:270','spikes:2','vsaw','island:200:125','hidden','island:205:120','gap:220'], exit:'fake',
    deathMessages:['Sliced.','Wait for it. Then go.'], completionMessage:'All limbs accounted for.'},
   {id:15, name:'CHASE', chase:345, segments:['gap:210','spikes:1','tiles:3:100:80','island:200:130','hidden','step','gap:225','island:200:125'], exit:'plain',
    deathMessages:['It caught up.','No time to think.'], completionMessage:'You outran it again.'},
-  {id:16, name:'GHOST FLOOR', taunt:'trust nothing you see.', segments:['invisible:220','hidden','slide:215','island:205:125','invisible:240','hidden','fake','island:205:120','spikes:2'], exit:'collapse',
+  {id:16, name:'GHOST FLOOR', taunt:'trust nothing you see.', segments:['invisible:220','hidden','slide:215','island:205:125','invisible:240','hidden','fake','island:205:120','spikes:2','island:210:115'], exit:'collapse',
    deathMessages:['That floor was real. The other one was not.','Seeing is not believing.'], completionMessage:'You walked on nothing and lived.'},
   {id:17, name:'CRUSHER ROW', taunt:'look up.', segments:['crusher','gap:225','crusher','island:205:120','tiles:4:100:80','crusher','hidden','island:210:120','gap:225'], exit:'collapse',
    deathMessages:['Flattened.','Patience is a skill.'], completionMessage:'Still three-dimensional.'},
-  {id:18, name:'RIDE', taunt:'stay low.', segments:['moving:380','island:205:120','moving:400:ceil','rusher:560','ceiling','moving:420:ceil','island:210:115','gap:225','hidden'], exit:'collapse',
+  {id:18, name:'RIDE', taunt:'stay low.', segments:['moving:380','island:205:120','moving:400:ceil','rusher:560','ceiling','moving:420:ceil','island:210:115','gap:225','hidden','island:210:115'], exit:'collapse',
    deathMessages:['Wrong stop.','Do not jump on the ride.'], completionMessage:'Please exit the ride safely.'},
   {id:19, name:'MIXED SIGNALS', segments:['slide:220','ceiling','island:210:115','saw:280','fake','hidden','crusher','tiles:5:100:70','island:210:115','gap:230'], exit:'collapse',
    deathMessages:['Every rule at once.','Read the level, not your hopes.'], completionMessage:'Signals decoded.'},
@@ -636,7 +636,7 @@ function buildLevel(def){
    deathMessages:['No mercy. As advertised.','You were warned.'], completionMessage:'Mercy was never needed.'},
   {id:29, name:'LAST BREATH', chase:360, segments:['rusher:620','island:225:95','tiles:6:90:40','ceiling','slide:240','island:230:90','gap:240','fake','rusher:620','ceiling','island:230:90','hidden','gap:240'], exit:'collapse',
    deathMessages:['Out of breath.','One more level after this. If you live.'], completionMessage:'Breathe. Then do the last one.'},
-  {id:30, name:'RAZEBAIT', taunt:'this is the end.', segments:['hidden','island:230:95','slide:240','rusher:620','moving:440:ceil','crusher','ceiling','island:230:90','saw:320','tiles:6:90:35','fake','vsaw','island:235:90','slide:245','ceiling','hidden','island:235:90','gap:245'], exit:'collapse',
+  {id:30, name:'RAZEBAIT', taunt:'this is the end.', segments:['hidden','island:230:95','slide:240','rusher:620','moving:440:ceil','crusher','ceiling','island:230:90','saw:320','tiles:6:90:35','fake','vsaw','island:235:90','slide:245','ceiling','hidden','island:235:90','gap:245','ceiling','island:235:85','rusher:640','island:240:85'], exit:'collapse',
    deathMessages:['Raze. Bait. Repeat.','The final lie.','Everything you learned. Everything.'], completionMessage:'You beat Razebait. All thirty levels. Nothing here can stop you now.'}
 ].forEach(def=>LEVELS.push(buildLevel(def)));
 
