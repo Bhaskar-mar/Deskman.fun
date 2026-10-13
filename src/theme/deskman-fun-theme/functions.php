@@ -7,7 +7,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DESKMAN_THEME_VERSION', '1.2.0' );
+define( 'DESKMAN_THEME_VERSION', '1.3.0' );
 
 /* =========================================================================
    ACTIVATION: auto-create a ready-to-play fullscreen page, tidy up the
@@ -183,15 +183,21 @@ add_action( 'after_setup_theme', 'deskman_theme_setup' );
  * Site-wide stylesheet (header/footer/typography for normal pages).
  * The game's own CSS/JS are enqueued separately, only on the fullscreen
  * Game template, so ordinary pages never pay for game asset weight.
+ *
+ * The font handle matches the plugin's ('deskman-fun-fonts') so pages that
+ * load both never request the Google Fonts stylesheet twice.
  */
 function deskman_theme_assets() {
-	wp_enqueue_style(
-		'deskman-fun-google-fonts',
-		'https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@500;600;700;800&display=swap',
-		array(),
-		null
-	);
-	wp_enqueue_style( 'deskman-theme-style', get_stylesheet_uri(), array( 'deskman-fun-google-fonts' ), DESKMAN_THEME_VERSION );
+	if ( ! wp_style_is( 'deskman-fun-fonts', 'registered' ) ) {
+		wp_register_style(
+			'deskman-fun-fonts',
+			'https://fonts.googleapis.com/css2?family=Archivo+Black&family=Caveat:wght@700&family=Inter:wght@500;600;700;800&display=swap',
+			array(),
+			null
+		);
+	}
+	wp_enqueue_style( 'deskman-fun-fonts' );
+	wp_enqueue_style( 'deskman-theme-style', get_stylesheet_uri(), array( 'deskman-fun-fonts' ), DESKMAN_THEME_VERSION );
 }
 add_action( 'wp_enqueue_scripts', 'deskman_theme_assets' );
 
@@ -207,23 +213,24 @@ add_filter( 'theme_page_templates', 'deskman_register_page_templates' );
 
 /**
  * Enqueue the game's own assets, but only when the fullscreen Game
- * template is actually being rendered.
+ * template is actually being rendered. If the deskman.fun plugin is active
+ * it has already registered these handles, and its (identical or newer)
+ * copy is used; otherwise the theme's bundled copy is registered here.
  */
 function deskman_maybe_enqueue_game_assets() {
-	if ( is_page_template( 'page-templates/game-fullscreen.php' ) ) {
-		wp_enqueue_style(
-			'deskman-fun-game-fonts',
-			'https://fonts.googleapis.com/css2?family=Archivo+Black&family=Caveat:wght@600;700&family=Inter:wght@500;600;700;800&display=swap',
-			array(),
-			null
-		);
-		wp_enqueue_style(
+	if ( ! is_page_template( 'page-templates/game-fullscreen.php' ) ) {
+		return;
+	}
+	if ( ! wp_style_is( 'deskman-fun-game', 'registered' ) ) {
+		wp_register_style(
 			'deskman-fun-game',
 			get_template_directory_uri() . '/assets/css/deskman-game.css',
-			array( 'deskman-fun-game-fonts' ),
+			array( 'deskman-fun-fonts' ),
 			DESKMAN_THEME_VERSION
 		);
-		wp_enqueue_script(
+	}
+	if ( ! wp_script_is( 'deskman-fun-game', 'registered' ) ) {
+		wp_register_script(
 			'deskman-fun-game',
 			get_template_directory_uri() . '/assets/js/deskman-game.js',
 			array(),
@@ -231,5 +238,18 @@ function deskman_maybe_enqueue_game_assets() {
 			true
 		);
 	}
+	wp_enqueue_style( 'deskman-fun-game' );
+	wp_enqueue_script( 'deskman-fun-game' );
 }
 add_action( 'wp_enqueue_scripts', 'deskman_maybe_enqueue_game_assets', 20 );
+
+/**
+ * The game's static markup, shared with the plugin via assets/game-markup.html.
+ */
+function deskman_theme_game_markup() {
+	$file = get_template_directory() . '/assets/game-markup.html';
+	if ( ! is_readable( $file ) ) {
+		return '<!-- deskman.fun: assets/game-markup.html is missing. -->';
+	}
+	return (string) file_get_contents( $file ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- local theme file.
+}
