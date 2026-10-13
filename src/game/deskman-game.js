@@ -1125,11 +1125,23 @@ function updatePlayer(ls, dt){
       else { p.x += pushR; }
     }
   }
-  for(const s of solids){
-    if(!rectOverlap(p, s)) continue;
-    const ox = Math.min(p.x+p.w, s.x+s.w) - Math.max(p.x, s.x);
-    const oy = Math.min(p.y+p.h, s.y+s.h) - Math.max(p.y, s.y);
-    if(ox > 4 && oy > 4){ killPlayer('crush'); return; }
+  // Squeezed between two solids (e.g. a ground edge and a returning moving
+  // platform): sideways pushes cancel out, so lift onto the surface if it is
+  // within a small step; otherwise it is a genuine crush.
+  const still = solids.filter(s=>rectOverlap(p, s));
+  if(still.length){
+    let lift = 0, top = null;
+    for(const s of still){ const d = p.y + p.h - s.y; if(d > lift){ lift = d; top = s; } }
+    const lifted = {x:p.x, y:p.y - lift, w:p.w, h:p.h};
+    if(lift <= 24 && !solids.some(s=>rectOverlap(lifted, s))){
+      p.y = lifted.y; if(p.vy > 0) p.vy = 0; p.grounded = true; standOn = top.ref;
+    } else {
+      for(const s of still){
+        const ox = Math.min(p.x+p.w, s.x+s.w) - Math.max(p.x, s.x);
+        const oy = Math.min(p.y+p.h, s.y+s.h) - Math.max(p.y, s.y);
+        if(ox > 1 && oy > 1){ killPlayer('crush'); return; }
+      }
+    }
   }
 
   if(p.grounded){
@@ -2061,7 +2073,14 @@ function openMenu(){
   if(gameState === 'playing' || gameState === 'dead') gameState = 'paused';
   buildLevelGrid();
   showOverlay('menuOverlay');
-  focusFirst('menuOverlay');
+  // open the (scrollable) grid at the current level, or the furthest one unlocked
+  const grid = $('levelGrid');
+  const tiles = grid.querySelectorAll('.lvl-tile');
+  const target = grid.querySelector('.lvl-tile.current') || [].filter.call(tiles, t=>!t.disabled).pop();
+  if(target){
+    grid.scrollTop = Math.max(0, target.offsetTop - grid.offsetTop - grid.clientHeight/2 + target.offsetHeight/2);
+    try{ target.focus({preventScroll:true}); }catch(e){}
+  } else focusFirst('menuOverlay');
 }
 function closeMenu(){
   Sound.uiClick();

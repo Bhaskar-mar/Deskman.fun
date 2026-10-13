@@ -46,7 +46,7 @@ Rollback: upload the original `deskman-fun.zip` / `deskman-fun-theme.zip` from t
 
 ```bash
 ./tools/build.sh                  # always rebuild before testing
-node tests/run-all.mjs            # play-throughs, traps, physics, browser integration (118 checks)
+node tests/run-all.mjs            # play-throughs, traps, physics, browser integration (140 checks)
 npx eslint src/game               # lint (config in eslint.config.mjs)
 ```
 
