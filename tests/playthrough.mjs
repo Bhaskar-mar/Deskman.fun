@@ -106,7 +106,8 @@ const PLANS = {
 
 export async function runPlanExported(page, levelIndex, plan, opts){ return runPlan(page, levelIndex, plan, opts); }
 async function runPlan(page, levelIndex, plan, opts = {}) {
-  return page.evaluate(({levelIndex, plan, startCheckpoint, maxSec, jitter, seed}) => {
+  return page.evaluate(({levelIndex, plan, startCheckpoint, maxSec, jitter, seed, trackChaser}) => {
+    let minChaserGap = Infinity;
     let rs = seed || 1;
     const rnd = () => (rs = (rs * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
     // optional human-like timing error: shift each jump threshold by ±jitter units
@@ -128,7 +129,8 @@ async function runPlan(page, levelIndex, plan, opts = {}) {
       const ls = D.level();
       const p = ls.player, H = ls.hazards, P = ls.plats, g = ls.goal;
       const st = D.state();
-      if (st === 'won') return {won:true, t:+t.toFixed(2), deaths, log};
+      if (trackChaser) { const ch = H.find(h => h.type === 'chaser' && h.running && h.front < h.stopX); if (ch) minChaserGap = Math.min(minChaserGap, p.x - ch.front); }
+      if (st === 'won') return {won:true, t:+t.toFixed(2), deaths, log, minChaserGap: Number.isFinite(minChaserGap) ? Math.round(minChaserGap) : null};
       if (st === 'dead' && lastState !== 'dead') deaths.push({reason: ls.deathReason, x: Math.round(p.x), y: Math.round(p.y), t:+t.toFixed(2)});
       lastState = st;
       if (st === 'dead') return {won:false, t:+t.toFixed(2), deaths, step:i, log};
@@ -165,7 +167,12 @@ async function runPlan(page, levelIndex, plan, opts = {}) {
     }
     const p = D.level().player;
     return {won:false, timeout:true, t, step:i, x:p.x, y:p.y, deaths, log};
-  }, {levelIndex, plan, startCheckpoint: opts.cp, maxSec: opts.maxSec || 40, jitter: opts.jitter || 0, seed: opts.seed || 1});
+  }, {levelIndex, plan, startCheckpoint: opts.cp, maxSec: opts.maxSec || 40, jitter: opts.jitter || 0, seed: opts.seed || 1, trackChaser: !!opts.trackChaser});
+}
+
+// Levels 9+ are built from segments and carry their own winning route.
+export async function levelRoutes(page) {
+  return page.evaluate(() => window.Razebait.debug.LEVELS.map(l => l.route || null));
 }
 
 // Difficulty curve: for every timed jump in a level's winning route, sweep
@@ -173,14 +180,16 @@ async function runPlan(page, levelIndex, plan, opts = {}) {
 // that still clears the level. Fewer/narrower windows = harder.
 export async function difficulty(page, range = 160, stepSize = 4) {
   const out = {};
-  for (const id of Object.keys(PLANS)) {
-    const plan = PLANS[id];
+  const routes = await levelRoutes(page);
+  const ids = routes.map((r, i) => i + 1);
+  for (const id of ids) {
+    const plan = PLANS[id] || routes[id - 1];
     const windows = [];
     for (let k = 0; k < plan.length; k++) {
       const a = plan[k];
       const key = a.jumpAt != null ? 'jumpAt' : a.tapAt != null ? 'tapAt' : null;
       if (!key) continue;
-      const tryOff = async off => (await runPlan(page, +id - 1, plan.map((b, m) => m === k ? Object.assign({}, b, {[key]: b[key] + off}) : b), {maxSec: 40})).won;
+      const tryOff = async off => (await runPlan(page, +id - 1, plan.map((b, m) => m === k ? Object.assign({}, b, {[key]: b[key] + off}) : b), {maxSec: 120})).won;
       let lo = 0, hi = 0;
       while (lo > -range && await tryOff(lo - stepSize)) lo -= stepSize;
       while (hi < range && await tryOff(hi + stepSize)) hi += stepSize;
@@ -188,7 +197,34 @@ export async function difficulty(page, range = 160, stepSize = 4) {
     }
     // score: sum of 100/width over timed jumps (a 50-unit window ≈ 130 ms adds 2)
     const score = +windows.reduce((sum, w) => sum + 100 / w.width, 0).toFixed(2);
-    out[id] = {score, timedJumps: windows.length, tightest: Math.min(...windows.map(w => w.width)), windows};
+    // Everything that is hard for reasons other than jump timing:
+    //  - crumbling tiles: 1 per stretch + 10 / (hesitation slack in units at run speed)
+    //  - chasing wall: 3 + (wall speed - 340) / 5
+    //  - reactive hazards (rushers, saws, crushers, rides): fixed weights
+    const extra = await page.evaluate(i => {
+      const L = window.Razebait.debug.LEVELS[i];
+      let tiles = 0, react = 0;
+      const groups = {};
+      // tiles you must run across (ones that drop faster than you can cross are jumped, and scored as jumps)
+      L.platforms.forEach(p => { if (p.type === 'disappearing') { const slackMs = p.delay - p.w / 380 * 1000; if (slackMs > 0) groups[p.delay + ':' + p.w] = 10 / (slackMs * 0.38); } });
+      const tileGroups = {};
+      L.platforms.forEach((p, i) => { if (p.type === 'disappearing' && p.delay - p.w / 380 * 1000 > 0) tileGroups[Math.round(p.x / 1000)] = 1; });
+      tiles = Object.keys(tileGroups).length + Object.values(groups).reduce((a, b) => a + b, 0);
+      L.hazards.forEach(h => {
+        if (h.type === 'spike' && h.idle) react += 0.6 + (h.path.speed - 480) / 200;
+        if (h.type === 'saw') react += 0.5 + (h.path.speed - 200) / 200;
+        if (h.type === 'fallingCeiling') react += 0.6;
+        if (h.type === 'hiddenSpike') react += 0.4;
+      });
+      L.platforms.forEach(p => { if (p.type === 'moving') react += 0.5; if (p.type === 'invisible') react += 0.3; });
+      if (L.goal.type === 'fake') react += 0.3;
+      return {tiles: +tiles.toFixed(2), react: +react.toFixed(2), chase: L.hazards.some(h => h.type === 'chaser')};
+    }, +id - 1);
+    // chasing wall: how little speed advantage you have (run speed 380)
+    const chaseSpeed = await page.evaluate(i => { const c = window.Razebait.debug.LEVELS[i].hazards.find(h => h.type === 'chaser'); return c ? c.speed : 0; }, +id - 1);
+    const chaseScore = chaseSpeed ? +(3 + (chaseSpeed - 340) / 5).toFixed(2) : 0;
+    const composite = +(score + extra.tiles + extra.react + chaseScore).toFixed(2);
+    out[id] = {composite, score, tiles: extra.tiles, react: extra.react, chase: chaseScore, timedJumps: windows.length, tightest: Math.min(...windows.map(w => w.width)), windows};
   }
   return out;
 }
@@ -196,8 +232,9 @@ export async function difficulty(page, range = 160, stepSize = 4) {
 export async function playthroughs(page) {
   const results = {};
   const count = await page.evaluate(() => window.Razebait.levels.length);
+  const routes = await levelRoutes(page);
   for (let i = 0; i < count; i++) {
-    const r = await runPlan(page, i, PLANS[i + 1]);
+    const r = await runPlan(page, i, PLANS[i + 1] || routes[i], {maxSec: 120});
     const naive = await runPlan(page, i, [{hold:'right'}, {until:'false'}], {maxSec: 20});
     results[i + 1] = {completed: r.won, time: r.t, deaths: r.deaths, step: r.step, jumps: r.log,
       naiveHoldRightDies: !naive.won && naive.deaths.length > 0, naiveDeath: naive.deaths[0]};

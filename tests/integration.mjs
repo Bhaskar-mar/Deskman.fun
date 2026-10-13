@@ -247,7 +247,7 @@ export async function integration(browser, base) {
     await p.click('#btnCloseSettings');
     await p.click('#btnLevelSelectStart');
     const tiles = await p.evaluate(() => [...document.querySelectorAll('#levelGrid .lvl-tile')].map(t => !t.disabled));
-    check('save v1: existing unlocks shown (levels 1-4 open, 5-8 locked)', JSON.stringify(tiles) === JSON.stringify([true, true, true, true, false, false, false, false]), tiles);
+    check('save v1: existing unlocks shown (levels 1-4 open, 5-30 locked)', JSON.stringify(tiles) === JSON.stringify(Array.from({length: 30}, (_, i) => i < 4)), tiles);
     // complete level 1 again → unlockedLevel must not drop to 2
     await p.evaluate(() => { const D = window.Razebait.debug; D.start(0); const ls = D.level(); ls.goal.x = ls.player.x - 18; ls.goal.y = ls.player.y - 38; D.step(2); });
     const stored = await p.evaluate(() => JSON.parse(localStorage.getItem('deskmanfun_save_v1')));
@@ -262,7 +262,7 @@ export async function integration(browser, base) {
     await p.click('#btnCloseMenu');
     await p.click('#btnPlay');
     const lvlAfter = await p.evaluate(() => window.Razebait.debug.level().data.id);
-    check('new levels: finishing the old 5 unlocks level 6 and Play continues there', JSON.stringify(tiles8) === JSON.stringify([true, true, true, true, true, true, false, false]) && lvlAfter === 6, {tiles8, lvlAfter});
+    check('new levels: finishing the old 5 unlocks level 6 and Play continues there', JSON.stringify(tiles8) === JSON.stringify(Array.from({length: 30}, (_, i) => i < 6)) && lvlAfter === 6, {tiles8, lvlAfter});
     await p.evaluate(() => localStorage.setItem('deskmanfun_save_v1', '{not json'));
     await p.reload(); await p.waitForTimeout(100);
     check('save: corrupted data falls back to defaults without errors', errs.length === 0 && (await p.evaluate(() => window.Razebait.getProgress().unlockedLevel)) === 1, errs);

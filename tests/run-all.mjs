@@ -30,7 +30,7 @@ const ph = await physics(page);
 line(ph.frameRateIndependence.pass, `frame-rate independence 30/60/120/144/240 Hz: max Δx=${ph.frameRateIndependence.maxDx}, Δy=${ph.frameRateIndependence.maxDy}`);
 line(ph.jump.pass, `jump height: held ${ph.jump.fullHeight}, tapped ${ph.jump.tapHeight}`);
 line(ph.riding.pass, `riding 420px/s platforms at 20-144 Hz: ${ph.ridingVertical.concat(ph.ridingHorizontal).map(r => r.groundedRatio).join(', ')}`);
-line(ph.fuzz.pass, `fuzz (90s random input per level): ` + ph.fuzz.levels.map(f => `L${f.level} embedded=${f.embedded} nan=${f.nan}`).join('; '));
+line(ph.fuzz.pass, `fuzz (45s random input per level, all levels): ` + ph.fuzz.levels.map(f => `L${f.level} embedded=${f.embedded} nan=${f.nan}`).join('; '));
 line(errors.length === 0, `no page errors during gameplay tests ${errors.join(' | ')}`);
 await page.close();
 

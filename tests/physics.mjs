@@ -81,7 +81,7 @@ export async function physics(page) {
     for (let li = 0; li < window.Razebait.levels.length; li++) {
       D.start(li); keysOff();
       let embedded = 0, nan = 0, deaths = 0, steps = 0, worst = 0;
-      for (let s = 0; s < 120 * 90; s++) { // 90 simulated seconds
+      for (let s = 0; s < 120 * 45; s++) { // 45 simulated seconds per level (30 levels)
         if (s % 12 === 0) {
           const r = rand();
           D.press('right', r < 0.65); D.press('left', r > 0.85);

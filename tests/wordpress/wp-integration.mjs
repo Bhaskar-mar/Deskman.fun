@@ -101,7 +101,7 @@ const titles = await page.evaluate(() => document.querySelectorAll('head title')
 check('theme template: exactly one <title>', titles === 1, titles);
 await page.click('#btnLevelSelectStart');
 const unlocked = await page.evaluate(() => [...document.querySelectorAll('#levelGrid .lvl-tile')].map(t => !t.disabled));
-check('upgrade: v1.2.0 player progress kept (levels 1-3 open)', JSON.stringify(unlocked) === JSON.stringify([true, true, true, false, false, false, false, false]), unlocked);
+check('upgrade: v1.2.0 player progress kept (levels 1-3 open)', JSON.stringify(unlocked) === JSON.stringify(Array.from({length: 30}, (_, i) => i < 3)), unlocked);
 await page.click('#btnCloseMenu');
 await page.click('#btnPlay');
 await page.keyboard.down('ArrowRight'); await page.waitForTimeout(500); await page.keyboard.up('ArrowRight');

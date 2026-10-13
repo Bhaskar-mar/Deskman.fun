@@ -281,7 +281,8 @@ body.admin-bar #deskman-fun-root .dgm-wrap-full #app{ top:32px; height:calc(100v
 #deskman-fun-root .switch.on .knob{ left:23px; }
 
 #deskman-fun-root .level-select-grid{
-  display:grid; grid-template-columns:repeat(auto-fit, minmax(80px, 1fr)); gap:10px; margin:14px 0 18px;
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(78px, 1fr)); gap:8px; margin:14px 0 18px;
+  max-height:min(60vh, 520px); overflow-y:auto; padding:4px; overscroll-behavior:contain;
 }
 #deskman-fun-root .lvl-tile{
   position:relative; min-height:84px; padding:8px 4px; margin:0;
@@ -338,12 +339,15 @@ body.admin-bar #deskman-fun-root .dgm-wrap-full #app{ top:32px; height:calc(100v
   #deskman-fun-root .card{ transition:none; }
 }
 
-/* difficulty tags in level select */
+/* difficulty tags in level select (tiers 1-7) */
 #deskman-fun-root .lvl-tile .df{ font-size:9px; font-weight:800; letter-spacing:.6px; padding:1px 6px; border-radius:6px; background:rgba(26,26,26,0.08); }
-#deskman-fun-root .lvl-tile .df5,
-#deskman-fun-root .lvl-tile .df6{ color:var(--dgm-red-dark); }
-#deskman-fun-root .lvl-tile .df7,
-#deskman-fun-root .lvl-tile .df8{ color:#fff; background:var(--dgm-red); }
+#deskman-fun-root .lvl-tile .df3{ color:var(--dgm-red-dark); }
+#deskman-fun-root .lvl-tile .df4,
+#deskman-fun-root .lvl-tile .df5{ color:#fff; background:var(--dgm-red); }
+#deskman-fun-root .lvl-tile .df6,
+#deskman-fun-root .lvl-tile .df7{ color:var(--dgm-gold); background:var(--dgm-ink); }
 #deskman-fun-root .lvl-tile.done .df{ background:rgba(255,253,248,0.14); color:var(--dgm-cream); }
-#deskman-fun-root .lvl-tile.done .df7,
-#deskman-fun-root .lvl-tile.done .df8{ background:var(--dgm-red); color:#fff; }
+#deskman-fun-root .lvl-tile.done .df4,
+#deskman-fun-root .lvl-tile.done .df5{ background:var(--dgm-red); color:#fff; }
+#deskman-fun-root .lvl-tile.done .df6,
+#deskman-fun-root .lvl-tile.done .df7{ background:var(--dgm-gold); color:var(--dgm-ink); }
