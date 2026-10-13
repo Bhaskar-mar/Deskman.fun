@@ -33,6 +33,27 @@ switch ( $cmd ) {
 	case 'page-template':
 		echo get_post_meta( (int) $args[0], '_wp_page_template', true );
 		break;
+	case 'mail-log':
+		echo wp_json_encode( get_option( 'dmf_test_mail', array() ) );
+		break;
+	case 'clear-limits':
+		global $wpdb;
+		$wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_dmf_rl_%' OR option_name LIKE '_transient_timeout_dmf_rl_%'" );
+		echo 'ok';
+		break;
+	case 'user':
+		$u = get_user_by( 'email', $args[0] );
+		echo wp_json_encode( $u ? array( 'id' => $u->ID, 'login' => $u->user_login, 'name' => $u->display_name, 'verified' => get_user_meta( $u->ID, 'deskman_verified', true ), 'google' => get_user_meta( $u->ID, 'deskman_google_sub', true ), 'terms' => get_user_meta( $u->ID, 'deskman_terms_accepted', true ), 'role' => $u->roles ) : null );
+		break;
+	case 'scores':
+		global $wpdb;
+		echo wp_json_encode( $wpdb->get_results( 'SELECT * FROM ' . $wpdb->prefix . 'deskman_scores', ARRAY_A ) );
+		break;
+	case 'privacy-tools':
+		$ex = apply_filters( 'wp_privacy_personal_data_exporters', array() );
+		$er = apply_filters( 'wp_privacy_personal_data_erasers', array() );
+		echo wp_json_encode( array( 'exporter' => isset( $ex['deskman-fun'] ), 'eraser' => isset( $er['deskman-fun'] ) ) );
+		break;
 	case 'state':
 		echo wp_json_encode( array(
 			'plugins'        => get_option( 'active_plugins' ),

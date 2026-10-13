@@ -4,7 +4,7 @@ Tags: game, html5, canvas, platformer, shortcode
 Requires at least: 5.5
 Tested up to: 6.6
 Requires PHP: 7.2
-Stable tag: 1.6.0
+Stable tag: 2.0.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -14,8 +14,9 @@ Embed the deskman.fun stickman rage-bait platformer on any post or page with a s
 
 deskman.fun is a minimalist 2D rage-bait platformer: a procedurally-animated stickman, physics-based momentum,
 moving/disappearing platforms, hidden traps, and thirty short levels that ramp from easy to near-impossible, designed to teach a lesson, break it, and teach it again. Everything
-runs client-side on HTML5 Canvas — no external API calls, no server requirement beyond serving the files, and
-progress/settings are saved in the player's browser (localStorage).
+runs client-side on HTML5 Canvas. Guests play without an account; their progress and settings are saved in the
+browser (localStorage). Players who want to appear on the leaderboard can create an account (username + email,
+with email verification) or sign in with Google. Accounts are ordinary WordPress users with the Subscriber role.
 
 This plugin embeds the game via a shortcode, so you can drop it into any page or post on an existing WordPress
 site without changing your theme.
@@ -40,8 +41,19 @@ Custom width for the inline box:
 * `max_width` accepts a single CSS length (e.g. `960px`, `80%`, `60rem`, `90vw`). Other values fall back to `960px`.
 * When embedded inline, the game only captures the keyboard after a visitor clicks it, and never inside form fields,
   so the rest of the page (scrolling, comment forms) keeps working.
-* All five levels, sound (synthesized, no audio files), music, haptics (on supporting mobile devices), and
-  save data work identically to the standalone version.
+* Sound is synthesized in the browser (no audio files). Music, haptics (on supporting mobile devices) and save
+  data work identically to the standalone version.
+* `[deskman_leaderboard]` renders the leaderboard as a plain table on any page (the plugin creates a Leaderboard
+  page on activation).
+
+= Accounts, email and Google sign-in =
+
+* Settings → deskman.fun: Google client ID, allow registration, require email verification, reset leaderboard.
+* Verification emails use `wp_mail()`. Many hosts do not deliver PHP mail reliably; install an SMTP plugin.
+* Google sign-in appears only after you add a Google OAuth "Web application" client ID; the settings page lists
+  the exact origin to authorise.
+* On activation the plugin creates Terms of Service and Privacy Policy pages (and reuses your existing published
+  privacy page). They are templates: review them before going live. Players must accept them to create an account.
 * Sound and vibration require a user gesture to start (a browser requirement, not a bug) — the Play button
   click satisfies this.
 
@@ -76,6 +88,19 @@ with a mouse. In portrait the controls sit in their own band below the play area
 in landscape they are translucent and the camera keeps the start and exit clear of them.
 
 == Changelog ==
+
+= 2.0.0 =
+* Renamed to deskman.fun everywhere (plugin, theme, game, pages).
+* Levels 9–30 rebuilt and much harder: spikes that rise under your landing, crumbling pillars, pop-up spike rows,
+  reversed controls, lowering spiked ceilings, falling stalactites. Re-ordered by measured difficulty; every level
+  and checkpoint is verified completable by the test bot.
+* Accounts: in-game sign-in and registration (WordPress users), email verification, optional Google sign-in,
+  Terms/Privacy agreement required, progress synced and merged (never lowered).
+* Leaderboard: per-level best times and an overall ranking, server-side storage, minimum-time checks and rate limits.
+* Level clear no longer shows a popup: a short banner, then the next level starts (press Jump to skip ahead).
+* Fix: the stickman's arms bent the wrong way, so he looked like he was running backwards.
+* New sound effects and music.
+* Privacy: personal-data exporter and eraser; deleting a user removes their scores; uninstall removes all plugin data.
 
 = 1.6.0 =
 * Fix: respawning at a checkpoint no longer leaves traps behind you un-sprung (in level 8 a rushing spike could

@@ -21,7 +21,7 @@ const line = (ok, msg) => { if (!ok) fail++; console.log((ok ? 'PASS ' : 'FAIL '
 
 console.log('\n== Level play-throughs ==');
 const pt = await playthroughs(page);
-for (const [id, r] of Object.entries(pt)) line(r.completed && r.naiveHoldRightDies, `Level ${id}: completed in ${r.time}s with ${r.jumps.length} jumps; naive run dies (${r.naiveDeath && r.naiveDeath.reason} @x=${r.naiveDeath && r.naiveDeath.x})`);
+for (const [id, r] of Object.entries(pt)) line(r.completed && r.naiveHoldRightDies, `Level ${id}: completed in ${r.time}s with ${r.jumps.length} jumps; naive run fails (${r.naiveDeath ? r.naiveDeath.reason + ' @x=' + r.naiveDeath.x : 'stuck: controls reversed'})`);
 
 console.log('\n== Traps fire as designed ==');
 for (const t of await traps(page)) line(t.ok, `L${t.level}: ${t.trap} → ${t.death ? t.death.reason + ' @x=' + t.death.x : 'no death'}`);

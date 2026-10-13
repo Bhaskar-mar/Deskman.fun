@@ -24,11 +24,13 @@ wp_install("deskman.fun Test", "admin", "admin@example.com", true, "", "admin-te
 update_option("siteurl", "http://127.0.0.1:'"$PORT"'"); update_option("home", "http://127.0.0.1:'"$PORT"'");
 update_option("permalink_structure", "/%postname%/");
 echo "WordPress ", $GLOBALS["wp_version"], " installed\n";' 2>&1 | grep -v sendmail
+mkdir -p "$T/wp-content/mu-plugins" && cp "$REPO/tests/wordpress/mu-test-helpers.php" "$T/wp-content/mu-plugins/"
 unzip -q -o "$REPO/deskman-fun.zip" -d "$T/wp-content/plugins"
 unzip -q -o "$REPO/deskman-fun-theme.zip" -d "$T/wp-content/themes"
 cat > "$T/.router.php" <<'PHP'
 <?php
 $root = $_SERVER['DOCUMENT_ROOT'];
+if ( getenv( 'DMF_LOG_REQUESTS' ) ) { error_log( '[req] ' . $_SERVER['REQUEST_METHOD'] . ' ' . $_SERVER['REQUEST_URI'] ); }
 $path = parse_url( $_SERVER['REQUEST_URI'], PHP_URL_PATH );
 if ( $path !== '/' && file_exists( $root . $path ) && ! is_dir( $root . $path ) ) {
 	if ( substr( $path, -4 ) === '.php' ) { chdir( dirname( $root . $path ) ); require $root . $path; return true; }

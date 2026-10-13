@@ -8,7 +8,7 @@ export default [
       globals: {
         window: 'readonly', document: 'readonly', navigator: 'readonly', performance: 'readonly',
         requestAnimationFrame: 'readonly', setTimeout: 'readonly', setInterval: 'readonly', clearInterval: 'readonly',
-        ResizeObserver: 'readonly', IntersectionObserver: 'readonly'
+        ResizeObserver: 'readonly', IntersectionObserver: 'readonly', fetch: 'readonly', FormData: 'readonly'
       }
     },
     rules: {

@@ -14,18 +14,26 @@ if ( ! defined( 'ABSPATH' ) ) {
 </head>
 <body <?php body_class(); ?>>
 <?php wp_body_open(); ?>
+<a class="skip-link" href="#main"><?php esc_html_e( 'Skip to content', 'deskman-fun-theme' ); ?></a>
 <header class="site-header">
-	<a class="brand" href="<?php echo esc_url( home_url( '/' ) ); ?>">deskman<span>.fun</span></a>
-	<nav>
-		<?php
-		wp_nav_menu(
-			array(
-				'theme_location' => 'primary',
-				'container'      => false,
-				'fallback_cb'    => false,
-			)
-		);
-		?>
-	</nav>
+	<div class="site-header-inner">
+		<a class="brand" href="<?php echo esc_url( home_url( '/' ) ); ?>">deskman<span>.fun</span></a>
+		<nav class="site-nav" aria-label="<?php esc_attr_e( 'Main', 'deskman-fun-theme' ); ?>">
+			<?php
+			if ( has_nav_menu( 'primary' ) ) {
+				wp_nav_menu(
+					array(
+						'theme_location' => 'primary',
+						'container'      => false,
+						'depth'          => 1,
+					)
+				);
+			} else {
+				deskman_theme_default_nav();
+			}
+			?>
+		</nav>
+		<a class="play-cta play-cta-sm" href="<?php echo esc_url( deskman_theme_play_url() ); ?>"><?php esc_html_e( 'Play', 'deskman-fun-theme' ); ?></a>
+	</div>
 </header>
-<main class="site-content">
+<main class="site-content" id="main">

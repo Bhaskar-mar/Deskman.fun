@@ -3,7 +3,7 @@
  * Plugin Name:       deskman.fun — Rage-Bait Platformer
  * Plugin URI:        https://deskman.fun
  * Description:       Embeds the deskman.fun stickman platformer via the [deskman_game] shortcode. Use fullscreen="yes" for a dedicated play page, or omit it for a responsive 16:9 box that sits inline in a post or page.
- * Version:           1.6.0
+ * Version:           2.0.0
  * Requires at least: 5.5
  * Requires PHP:      7.2
  * Author:            deskman.fun
@@ -16,9 +16,16 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // No direct access.
 }
 
-define( 'DESKMAN_FUN_VERSION', '1.6.0' );
+define( 'DESKMAN_FUN_VERSION', '2.0.0' );
 define( 'DESKMAN_FUN_URL', plugin_dir_url( __FILE__ ) );
 define( 'DESKMAN_FUN_PATH', plugin_dir_path( __FILE__ ) );
+
+require_once DESKMAN_FUN_PATH . 'includes/accounts.php';
+require_once DESKMAN_FUN_PATH . 'includes/min-times.php';
+require_once DESKMAN_FUN_PATH . 'includes/pages.php';
+if ( is_admin() ) {
+	require_once DESKMAN_FUN_PATH . 'includes/admin.php';
+}
 
 /* =========================================================================
    ACTIVATION: auto-create a ready-to-play page, tidy up the stock WP
@@ -26,6 +33,9 @@ define( 'DESKMAN_FUN_PATH', plugin_dir_path( __FILE__ ) );
 ========================================================================= */
 register_activation_hook( __FILE__, 'deskman_fun_activate' );
 function deskman_fun_activate() {
+	deskman_fun_install_db();
+	deskman_fun_create_required_pages();
+	update_option( 'deskman_fun_pages_done', 1 );
 	$page_id = deskman_fun_create_play_page();
 	deskman_fun_cleanup_default_content();
 	deskman_fun_maybe_set_front_page( $page_id );
@@ -42,6 +52,53 @@ function deskman_fun_activate() {
  * never repeats even if a page already existed at /play.
  */
 add_action( 'admin_init', 'deskman_fun_maybe_self_heal' );
+
+/**
+ * Upgrades: updating the plugin's files does not re-run activation, so the
+ * scores table and the required pages are created on the first request
+ * after an update (two cheap option reads otherwise).
+ */
+add_action( 'init', 'deskman_fun_maybe_upgrade' );
+function deskman_fun_maybe_upgrade() {
+	if ( DESKMAN_FUN_DB_VERSION !== get_option( 'deskman_fun_db_version' ) ) {
+		deskman_fun_install_db();
+	}
+	if ( ! get_option( 'deskman_fun_pages_done' ) ) {
+		update_option( 'deskman_fun_pages_done', 1 );
+		deskman_fun_create_required_pages();
+	}
+}
+
+/**
+ * Settings the game needs to talk to the accounts API. Printed once, right
+ * before the game script, on any page that loads the game.
+ */
+function deskman_fun_client_config() {
+	$s      = deskman_fun_settings();
+	$notice = isset( $_GET['deskman_verified'] ) ? sanitize_key( wp_unslash( $_GET['deskman_verified'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification -- display only.
+	return array(
+		'restUrl'          => esc_url_raw( rest_url( 'deskman-fun/v1/' ) ),
+		'nonce'            => wp_create_nonce( 'wp_rest' ),
+		'me'               => deskman_fun_me(),
+		'googleClientId'   => $s['google_client_id'],
+		'allowRegistration'=> (bool) $s['allow_registration'],
+		'requireVerify'    => (bool) $s['require_verification'],
+		'termsUrl'         => deskman_fun_page_url( 'deskman_fun_terms_page_id' ),
+		'privacyUrl'       => deskman_fun_page_url( 'deskman_fun_privacy_page_id' ),
+		'leaderboardUrl'   => deskman_fun_page_url( 'deskman_fun_leaderboard_page_id' ),
+		'verifyResult'     => in_array( $notice, array( 'ok', 'already', 'expired', 'invalid' ), true ) ? $notice : '',
+	);
+}
+function deskman_fun_print_config() {
+	static $done = false;
+	if ( $done || ! wp_script_is( 'deskman-fun-game', 'enqueued' ) ) {
+		return;
+	}
+	$done = true;
+	wp_add_inline_script( 'deskman-fun-game', 'window.DESKMAN_CONFIG = ' . wp_json_encode( deskman_fun_client_config() ) . ';', 'before' );
+}
+// The theme's fullscreen template enqueues the game during wp_enqueue_scripts.
+add_action( 'wp_enqueue_scripts', 'deskman_fun_print_config', 99 );
 function deskman_fun_maybe_self_heal() {
 	if ( get_option( 'deskman_fun_setup_done' ) ) {
 		return;
@@ -265,6 +322,7 @@ function deskman_fun_shortcode( $atts ) {
 	wp_enqueue_style( 'deskman-fun-fonts' );
 	wp_enqueue_style( 'deskman-fun-game' );
 	wp_enqueue_script( 'deskman-fun-game' );
+	deskman_fun_print_config();
 
 	$is_full    = in_array( strtolower( (string) $atts['fullscreen'] ), array( 'yes', 'true', '1' ), true );
 	$wrap_class = 'dgm-wrap ' . ( $is_full ? 'dgm-wrap-full' : 'dgm-wrap-embed' );

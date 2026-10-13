@@ -11,7 +11,7 @@ if(!root || root.getAttribute('data-dgm-init')) return;
 root.setAttribute('data-dgm-init','1');
 
 const $ = (id)=>document.getElementById(id);
-const GAME_VERSION = '1.6.0';
+const GAME_VERSION = '2.0.0';
 const DEBUG = window.DESKMAN_DEBUG === true;
 
 /* =========================================================================
@@ -592,6 +592,61 @@ function buildLevel(def){
         route.push({jumpAt:c + 260}, {jumpAt:c + 300 + W + I - 40});
         c += 300 + 2*W + I; break;
       }
+      case 'ambush': {
+        // mid-jump, a spike pops up exactly where a normal jump lands: jump early, then hop it
+        const W = v, X = c + 300 + W + 100;
+        P(ground(c, 300)); P(ground(c + 300 + W, 600));
+        const h = H({x:X, y:G-22, w:44, h:22, type:'hiddenSpike'});
+        triggers.push({x:c + 300 + W/2, w:20, actions:[{do:'reveal', hazard:h}]});
+        route.push({jumpAt:c + W + 28}, {jumpAt:c + 300 + W + 20});
+        c += 300 + W + 600; break;
+      }
+      case 'crumble': {
+        // narrow pillar that collapses right after you land on it
+        const W = v, I = parseFloat(a[2]);
+        P(ground(c, 300)); P({x:c + 300 + W, y:G, w:I, h:900 - G, type:'disappearing', delay:150});
+        route.push({jumpAt:c + 260}, {jumpAt:c + 300 + W});
+        c += 300 + 2*W + I; break;
+      }
+      case 'reverse': {
+        // left/right swap inside the zone (with a big warning); a spike waits in the middle
+        const L = v, X = c + 300 + Math.round(L/2);
+        P(ground(c, 600 + L)); H(spike(X, 44));
+        triggers.push({x:c + 250, w:20, actions:[{do:'reverse', on:true}]});
+        triggers.push({x:c + 300 + L, w:20, actions:[{do:'reverse', on:false}]});
+        route.push({until:'p.x >= ' + (c + 217)}, {release:'right'}, {hold:'left'}, {jumpAt:X - 80},
+          {until:'p.x >= ' + (c + 267 + L)}, {release:'left'}, {hold:'right'});
+        c += 600 + L; break;
+      }
+      case 'dropceiling': {
+        // a high ceiling slams down as you enter: only a tap jump survives
+        P(ground(c, 800));
+        const ceil = P({x:c + 250, y:-1370, w:400, h:1670, type:'solid'});
+        const h = H({x:c + 250, y:300, w:400, h:22, type:'spike', flip:true, idle:true, path:{x1:c + 250, y1:300, x2:c + 250, y2:470, speed:680, once:true}});
+        H(spike(c + 425, 32));
+        triggers.push({x:c + 200, w:20, actions:[{do:'slide', plat:ceil, to:{y:-1200}, dur:0.25}, {do:'start', hazard:h}]});
+        route.push({tapAt:c + 340}); c += 800; break;
+      }
+      case 'stalactites': {
+        // blocks drop the instant you are under them; they only miss you at full speed
+        const n = v;
+        P(ground(c, 300 + n*220 + 200));
+        for(let k=0;k<n;k++){
+          const X = c + 300 + k*220;
+          H({x:X, y:330, w:60, h:90, type:'fallingCeiling', triggerZone:{x:X + 42, w:20}, warningTime:0.02, fallSpeed:1800, restY:G-90});
+        }
+        c += 300 + n*220 + 200; break;
+      }
+      case 'popup': {
+        // three hidden spikes rise one after another: chain three quick jumps
+        P(ground(c, 1100));
+        for(let k=0;k<3;k++){
+          const X = c + 300 + k*300;
+          H({x:X, y:G-22, w:44, h:22, type:'hiddenSpike', revealTrigger:{x:X - 150, w:30}});
+          route.push({jumpAt:X - 80});
+        }
+        c += 1100; break;
+      }
       case 'step':
         P(ground(c, 300)); P({x:c + 300, y:560, w:300, h:340, type:'solid'});
         route.push({jumpAt:c + 190}); c += 600; break;
@@ -636,49 +691,49 @@ function buildLevel(def){
 }
 
 [
-  {id:9,  name:'LEAP OF FAITH', taunt:'mind the gaps.', segments:['gap:200','island:180:150','spikes:1','gap:210','hidden','island:190:140','step','island:195:130','gap:215','island:200:125','gap:230'], exit:'plain',
-   deathMessages:['The gap was bigger than it looked.','Jump earlier. No, later.'], completionMessage:'Faith rewarded. For now.'},
-  {id:10, name:'CRUMBLE', taunt:'keep moving.', segments:['tiles:3:120:120','gap:210','island:190:140','tiles:4:100:100','spikes:2','fake','tiles:5:100:90','island:195:130','gap:215','island:200:125','gap:230'], exit:'plain',
-   deathMessages:['You hesitated. It crumbled.','Floors are temporary.'], completionMessage:'You never let the ground get comfortable.'},
-  {id:11, name:'RUSH HOUR', taunt:'look ahead.', segments:['rusher:500','island:190:140','rusher:540','hidden','gap:215','rusher:560','spikes:2','island:195:135','island:200:125','gap:220','gap:230'], exit:'fake',
-   deathMessages:['It was in a hurry.','Spikes have places to be.'], completionMessage:'Traffic survived.'},
-  {id:12, name:'CHASE', chase:345, segments:['gap:210','spikes:1','tiles:3:100:80','island:200:130','hidden','step','gap:225','island:200:125'], exit:'plain',
-   deathMessages:['It caught up.','No time to think.'], completionMessage:'You outran it again.'},
-  {id:13, name:'SLIP', taunt:'the floor is shy.', segments:['slide:200','spikes:1','slide:210','island:195:130','tiles:4:100:90','slide:220','hidden','island:200:130','island:205:120','gap:220','gap:230'], exit:'fake',
-   deathMessages:['It slid. You did not.','Floors move here.'], completionMessage:'You kept your footing. Barely.'},
-  {id:14, name:'GHOST FLOOR', taunt:'trust nothing you see.', segments:['invisible:220','hidden','slide:215','island:205:125','invisible:240','hidden','fake','island:205:120','spikes:2','island:210:115','gap:230'], exit:'collapse',
+  {id:9, name:'CRUMBLE', taunt:'keep moving.', segments:['tiles:4:100:60','crumble:200:120','gap:225','tiles:5:100:50','island:205:110','fake','tiles:6:90:45','crumble:205:110','ambush:150','gap:230'], exit:'plain',
+   deathMessages:['You hesitated. It crumbled.','Floors are temporary.','You landed. It left.'], completionMessage:'You never let the ground get comfortable.'},
+  {id:10, name:'RIDE', taunt:'stay low.', segments:['moving:400:ceil','island:210:105','moving:420:ceil','rusher:680','dropceiling','moving:440:ceil','crumble:210:105','ambush:150','gap:240'], exit:'collapse',
+   deathMessages:['Wrong stop.','Do not jump on the ride.','The ceiling came to you.'], completionMessage:'Please exit the ride safely.'},
+  {id:11, name:'SAW MILL', taunt:'timing.', segments:['saw:320','crumble:210:105','vsaw','stalactites:2','saw:340','ambush:150','vsaw','island:215:100','popup','gap:240'], exit:'fake',
+   deathMessages:['Sliced.','Wait for it. Then go. Then really go.'], completionMessage:'All limbs accounted for.'},
+  {id:12,  name:'LEAP OF FAITH', taunt:'mind the gaps.', segments:['gap:220','island:200:120','ambush:150','island:205:110','spikes:1','popup','gap:230','crumble:200:120','step','island:210:105','gap:235'], exit:'plain',
+   deathMessages:['The landing moved. Not you.','Jump earlier. No, later.','That spike was not there. Now it is.'], completionMessage:'Faith rewarded. For now.'},
+  {id:13, name:'RUSH HOUR', taunt:'look ahead.', segments:['rusher:620','island:205:110','rusher:650','ambush:150','popup','rusher:680','crumble:205:110','spikes:2','rusher:700','gap:235'], exit:'fake',
+   deathMessages:['It was in a hurry.','Spikes have places to be.','Rush hour never ends.'], completionMessage:'Traffic survived.'},
+  {id:14, name:'GHOST FLOOR', taunt:'trust nothing you see.', segments:['invisible:240','ambush:150','slide:235','island:210:105','popup','invisible:250','fake','crumble:210:105','hidden','reverse:600','gap:240'], exit:'collapse',
    deathMessages:['That floor was real. The other one was not.','Seeing is not believing.'], completionMessage:'You walked on nothing and lived.'},
-  {id:15, name:'RIDE', taunt:'stay low.', segments:['moving:380','island:205:120','moving:400:ceil','rusher:560','ceiling','moving:420:ceil','island:210:115','gap:225','hidden','island:210:115'], exit:'collapse',
-   deathMessages:['Wrong stop.','Do not jump on the ride.'], completionMessage:'Please exit the ride safely.'},
-  {id:16, name:'SAW MILL', taunt:'timing.', segments:['saw:240','island:200:130','vsaw','gap:220','saw:270','spikes:2','vsaw','island:200:125','hidden','island:205:120','gap:220','gap:230'], exit:'fake',
-   deathMessages:['Sliced.','Wait for it. Then go.'], completionMessage:'All limbs accounted for.'},
-  {id:17, name:'LOW CEILING', taunt:'short hops.', segments:['ceiling','gap:215','ceiling','island:195:135','rusher:540','ceiling','step','island:200:125','gap:220','island:200:120','gap:230'], exit:'fake',
-   deathMessages:['Too much jump.','The ceiling bites.'], completionMessage:'You learned restraint. Mostly.'},
-  {id:18, name:'MIXED SIGNALS', segments:['slide:220','ceiling','island:210:115','saw:280','fake','hidden','crusher','tiles:5:100:70','island:210:115','gap:230'], exit:'collapse',
-   deathMessages:['Every rule at once.','Read the level, not your hopes.'], completionMessage:'Signals decoded.'},
-  {id:19, name:'DESCENT', taunt:'down we go.', segments:['rusher:580','island:210:110','moving:420:ceil','ceiling','slide:230','vsaw','hidden','tiles:5:100:65','island:215:110','gap:230'], exit:'collapse',
+  {id:15, name:'SLIP', taunt:'the floor is shy.', segments:['slide:230','popup','slide:235','crumble:205:110','reverse:600','slide:240','ambush:150','island:210:105','tiles:5:100:45','slide:245'], exit:'fake',
+   deathMessages:['It slid. You did not.','Left is right now.','Floors move here.'], completionMessage:'You kept your footing. Barely.'},
+  {id:16, name:'LOW CEILING', taunt:'short hops.', segments:['ceiling','dropceiling','island:210:105','ceiling','reverse:600','dropceiling','rusher:680','ceiling','crumble:215:100','gap:240'], exit:'fake',
+   deathMessages:['Too much jump.','The ceiling bites.','It was higher a second ago.'], completionMessage:'You learned restraint. Mostly.'},
+  {id:17, name:'DESCENT', taunt:'down we go.', segments:['rusher:690','crumble:215:100','moving:440:ceil','dropceiling','slide:240','vsaw','ambush:150','reverse:650','tiles:6:90:40','island:215:100','gap:245'], exit:'collapse',
    deathMessages:['Deeper.','It only gets worse.'], completionMessage:'Still descending. Good luck.'},
-  {id:20, name:'CRUSHER ROW', taunt:'look up.', segments:['crusher','gap:225','crusher','island:205:120','tiles:4:100:80','crusher','hidden','island:210:120','gap:225'], exit:'collapse',
-   deathMessages:['Flattened.','Patience is a skill.'], completionMessage:'Still three-dimensional.'},
-  {id:21, name:'NEEDLE', taunt:'tap. tap. tap.', segments:['ceiling','spikes:2','ceiling','island:215:110','hidden','ceiling','gap:235','ceiling','island:215:105','fake','ceiling'], exit:'collapse',
-   deathMessages:['Pierced.','Smaller jumps. Smaller.'], completionMessage:'Threaded.'},
-  {id:22, name:'BLIND FAITH', taunt:'close your eyes.', segments:['hidden','invisible:240','slide:240','island:220:100','hidden','invisible:240','fake','hidden','slide:240','island:225:100','ceiling','gap:240'], exit:'collapse',
+  {id:18, name:'BLIND FAITH', taunt:'close your eyes.', segments:['ambush:155','invisible:250','slide:245','popup','invisible:250','fake','crumble:220:95','hidden','reverse:700','slide:245','ambush:160','island:220:95','gap:245'], exit:'collapse',
    deathMessages:['You could not see it. Now you know.','Memorize. Repeat.'], completionMessage:'Faith, but verified.'},
-  {id:23, name:'GRINDER', segments:['saw:300','island:220:105','crusher','vsaw','saw:310','island:220:100','crusher','gap:235','vsaw','spikes:2','ceiling','island:220:100'], exit:'collapse',
-   deathMessages:['Ground up.','Machines do not miss.'], completionMessage:'You beat the machine.'},
-  {id:24, name:'QUICKSAND', taunt:'faster.', segments:['tiles:5:100:60','slide:230','island:215:105','tiles:6:100:55','fake','slide:240','island:220:105','tiles:6:90:50','gap:235','hidden','ceiling'], exit:'collapse',
+  {id:19, name:'MIXED SIGNALS', segments:['reverse:700','slide:240','dropceiling','saw:330','ambush:150','fake','crumble:215:100','stalactites:3','tiles:5:90:45','popup','gap:240'], exit:'collapse',
+   deathMessages:['Every rule at once.','Read the level, not your hopes.','Left. No. Right. No.'], completionMessage:'Signals decoded.'},
+  {id:20, name:'QUICKSAND', taunt:'faster.', segments:['tiles:6:90:35','slide:245','crumble:220:95','tiles:6:90:30','fake','reverse:700','tiles:6:90:30','ambush:160','slide:245','crumble:225:95','popup','gap:245'], exit:'collapse',
    deathMessages:['Swallowed.','The floor was hungry.'], completionMessage:'You never stood still.'},
-  {id:25, name:'STAMPEDE', chase:350, segments:['rusher:560','island:210:115','rusher:580','ceiling','tiles:4:100:65','rusher:600','island:215:110','gap:230','hidden'], exit:'collapse',
-   deathMessages:['Trampled.','Everything is coming at you.'], completionMessage:'The herd thinned.'},
-  {id:26, name:'NO MERCY', segments:['fake','ceiling','island:225:95','vsaw','slide:240','rusher:620','island:230:95','moving:440:ceil','tiles:6:90:40','crusher','island:230:90','gap:240','hidden','ceiling'], exit:'collapse',
-   deathMessages:['No mercy. As advertised.','You were warned.'], completionMessage:'Mercy was never needed.'},
-  {id:27, name:'GAUNTLET', segments:['slide:240','island:225:100','rusher:600','moving:420:ceil','crusher','ceiling','island:225:95','saw:310','tiles:6:90:45','hidden','island:225:95','gap:240','ceiling'], exit:'collapse',
+  {id:21, name:'CRUSHER ROW', taunt:'look up.', segments:['crusher','stalactites:3','crumble:215:100','crusher','ambush:155','tiles:5:90:40','crusher','reverse:650','stalactites:3','popup','gap:245'], exit:'collapse',
+   deathMessages:['Flattened.','Patience. Then panic.'], completionMessage:'Still three-dimensional.'},
+  {id:22, name:'CHASE', chase:360, segments:['gap:225','popup','tiles:4:100:50','island:205:110','ambush:150','stalactites:2','crumble:205:110','gap:235','hidden'], exit:'plain',
+   deathMessages:['It caught up.','No time to think.','Slower is deader.'], completionMessage:'You outran it again.'},
+  {id:23, name:'GRINDER', segments:['saw:340','crumble:220:95','crusher','vsaw','stalactites:3','saw:350','ambush:160','crusher','reverse:650','vsaw','island:220:95','dropceiling','gap:245'], exit:'collapse',
+   deathMessages:['Ground up.','Machines do not miss.'], completionMessage:'You beat the machine.'},
+  {id:24, name:'GAUNTLET', segments:['slide:245','crumble:225:90','rusher:720','moving:460:ceil','crusher','dropceiling','reverse:700','saw:350','tiles:6:90:30','ambush:160','island:225:90','popup','gap:245'], exit:'collapse',
    deathMessages:['The gauntlet wins this round.','Every trap, in order.'], completionMessage:'Gauntlet run.'},
-  {id:28, name:'FLIGHT', chase:355, segments:['tiles:5:100:55','ceiling','island:220:105','rusher:600','tiles:5:100:50','ceiling','slide:235','island:225:100','gap:240','hidden'], exit:'collapse',
+  {id:25, name:'NEEDLE', taunt:'tap. tap. tap.', segments:['dropceiling','spikes:2','ceiling','popup','dropceiling','crumble:220:100','ceiling','ambush:155','reverse:650','dropceiling','island:220:95','fake'], exit:'collapse',
+   deathMessages:['Pierced.','Smaller jumps. Smaller.'], completionMessage:'Threaded.'},
+  {id:26, name:'NO MERCY', segments:['fake','dropceiling','crumble:225:95','vsaw','slide:245','rusher:720','reverse:700','moving:460:ceil','tiles:6:90:30','crusher','ambush:160','island:225:90','stalactites:3','popup','gap:245'], exit:'collapse',
+   deathMessages:['No mercy. As advertised.','You were warned.'], completionMessage:'Mercy was never needed.'},
+  {id:27, name:'STAMPEDE', chase:365, segments:['rusher:700','crumble:220:95','rusher:720','dropceiling','tiles:5:90:35','ambush:160','rusher:720','stalactites:2','island:225:90','gap:245'], exit:'collapse',
+   deathMessages:['Trampled.','Everything is coming at you.'], completionMessage:'The herd thinned.'},
+  {id:28, name:'FLIGHT', chase:368, segments:['tiles:5:90:35','dropceiling','crumble:225:90','rusher:720','ambush:160','tiles:5:90:30','ceiling','slide:245','island:225:90','stalactites:2','gap:245'], exit:'collapse',
    deathMessages:['Flight denied.','Faster. Smaller. Now.'], completionMessage:'Escaped. Again.'},
-  {id:29, name:'LAST BREATH', chase:360, segments:['rusher:620','island:225:95','tiles:6:90:40','ceiling','slide:240','island:230:90','gap:240','fake','rusher:620','ceiling','island:230:90','hidden','gap:240'], exit:'collapse',
+  {id:29, name:'LAST BREATH', chase:370, segments:['rusher:720','crumble:225:90','tiles:6:90:30','dropceiling','slide:245','ambush:160','island:230:90','fake','rusher:720','ceiling','popup','crumble:230:90','gap:245'], exit:'collapse',
    deathMessages:['Out of breath.','One more level after this. If you live.'], completionMessage:'Breathe. Then do the last one.'},
-  {id:30, name:'DESKMAN', taunt:'this is the end.', segments:['hidden','island:230:95','slide:240','rusher:620','moving:440:ceil','crusher','ceiling','island:230:90','saw:320','tiles:6:90:35','fake','vsaw','island:235:90','slide:245','ceiling','hidden','island:235:90','gap:245','ceiling','island:235:85','rusher:640','island:240:85'], exit:'collapse',
+  {id:30, name:'DESKMAN', taunt:'this is the end.', segments:['ambush:160','crumble:230:90','slide:245','rusher:720','moving:460:ceil','crusher','dropceiling','island:230:90','reverse:750','saw:360','tiles:6:90:25','fake','vsaw','stalactites:3','crumble:235:85','slide:245','dropceiling','popup','ambush:165','island:235:85','rusher:740','crumble:240:85','gap:245'], exit:'collapse',
    deathMessages:['Run. Fail. Repeat.','The final lie.','Everything you learned. Everything.'], completionMessage:'You beat deskman.fun. All thirty levels. Nothing here can stop you now.'}
 ].forEach(def=>LEVELS.push(buildLevel(def)));
 
@@ -874,6 +929,8 @@ window.addEventListener('keydown', (e)=>{
       if(gameState === 'paused' && $('pauseOverlay').classList.contains('show')) resumeGame();
       else if($('settingsOverlay').classList.contains('show')) closeSettings();
       else if($('menuOverlay').classList.contains('show')) closeMenu();
+      else if($('accountOverlay').classList.contains('show')) closeAccount();
+      else if($('boardOverlay').classList.contains('show')) closeBoard();
     }
     return; // let Tab/Enter/Space operate the focused overlay button normally
   }
@@ -1089,6 +1146,11 @@ function runTriggerActions(ls, actions){
     else if(a.do === 'start') startHazard(ls, ls.hazards[a.hazard]);
     else if(a.do === 'moveGoal') moveGoal(ls, a.to);
     else if(a.do === 'slide') slidePlatform(ls.plats[a.plat], a.to, a.dur);
+    else if(a.do === 'reverse'){
+      ls.reversed = !!a.on; ls.reverseFlash = 1;
+      if(a.on){ Sound.warn(); vibrate(HAPTIC.medium); camera.shake = Math.max(camera.shake, 5); }
+      else Sound.respawn();
+    }
     else if(a.do === 'toast') showToast(a.text);
   }
 }
@@ -1107,7 +1169,7 @@ function updatePlayer(ls, dt){
   let moveDir = 0;
   if(keys.left) moveDir -= 1;
   if(keys.right) moveDir += 1;
-  if(data.reverseControls) moveDir = -moveDir;
+  if(data.reverseControls || ls.reversed) moveDir = -moveDir;
 
   // horizontal velocity
   const targetVx = moveDir*MOVE_SPEED;
@@ -1486,6 +1548,7 @@ function triggerWin(){
   if(!(st.bestDeaths >= 0) || attemptDeaths < st.bestDeaths) st.bestDeaths = attemptDeaths;
   save.levelStats[data.id] = st;
   persistSave();
+  submitClear(data.id, attemptTime*1000, attemptDeaths);
 
   if(isFinale){ Sound.finale(); vibrate(HAPTIC.strong); }
   else { Sound.victory(); vibrate(HAPTIC.small); }
@@ -1638,11 +1701,30 @@ function draw(){
     ctx.fillRect(-10, VH, view.w + 20, 3/view.scale);
   }
 
+  if(ls.reversed || ls.reverseFlash > 0) drawReverseBanner(ls);
+
   if(ls.flash > 0){
     ctx.setTransform(1,0,0,1,0,0);
     ctx.fillStyle = 'rgba(224,50,60,' + (ls.flash*0.14).toFixed(3) + ')';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
+}
+
+// Screen-space warning while left/right are swapped.
+function drawReverseBanner(ls){
+  const k = ls.reversed ? 1 : ls.reverseFlash;
+  ls.reverseFlash = Math.max(0, (ls.reverseFlash || 0) - 0.04);
+  const s = view.dpr, cw = canvas.width, y = (view.cssW < 640 ? 118 : 104)*s;
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.globalAlpha = Math.min(1, k) * (ls.reversed ? 0.85 + 0.15*Math.sin(ls.elapsed*10) : 1);
+  const txt = ls.reversed ? '\u21c4  CONTROLS REVERSED  \u21c4' : 'CONTROLS NORMAL';
+  ctx.font = '900 ' + Math.round(15*s) + 'px Inter, system-ui, sans-serif';
+  const w = ctx.measureText(txt).width + 36*s, h = 32*s;
+  ctx.fillStyle = ls.reversed ? COL.red : COL.ink;
+  roundRect(cw/2 - w/2, y, w, h, 10*s); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(txt, cw/2, y + h/2 + 1*s);
+  ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic'; ctx.globalAlpha = 1;
 }
 
 function roundRect(x, y, w, h, r){
@@ -2234,6 +2316,246 @@ if(!isFullscreenMode && typeof IntersectionObserver === 'function'){
 }
 
 /* =========================================================================
+   ACCOUNTS & LEADERBOARD (only when the WordPress plugin provides a config)
+   Guests always play; signing in syncs progress and submits best times.
+   Nothing here can grant unlocks: the server only stores and ranks times.
+========================================================================= */
+const CFG = (window.DESKMAN_CONFIG && window.DESKMAN_CONFIG.restUrl) ? window.DESKMAN_CONFIG : null;
+let me = CFG && CFG.me ? CFG.me : {loggedIn:false};
+let restNonce = CFG ? CFG.nonce : '';
+let pendingGoogleCredential = null;
+
+function apiUrl(path, query){
+  let u = CFG.restUrl + path;
+  if(query) u += (u.indexOf('?') >= 0 ? '&' : '?') + query;
+  return u;
+}
+function rest(path, body, method){
+  return fetch(apiUrl(path), {
+    method: method || (body ? 'POST' : 'GET'),
+    credentials: 'same-origin',
+    headers: {'Content-Type':'application/json', 'X-WP-Nonce': restNonce},
+    body: body ? JSON.stringify(body) : undefined
+  }).then(r=>r.json().catch(()=>({})).then(j=>{
+    if(!r.ok){ const e = new Error(j && j.message ? j.message : 'Something went wrong. Try again.'); e.code = j && j.code; throw e; }
+    return j;
+  }));
+}
+function localProgress(){
+  return {unlockedLevel:save.unlockedLevel, completedLevels:save.completedLevels.slice(), totalDeaths:save.totalDeaths};
+}
+function mergeServerProgress(p){
+  if(!p) return;
+  save.unlockedLevel = Math.max(save.unlockedLevel, parseInt(p.unlockedLevel, 10) || 1);
+  (p.completedLevels || []).forEach(n=>{ n = parseInt(n, 10); if(n > 0 && save.completedLevels.indexOf(n) < 0) save.completedLevels.push(n); });
+  save.totalDeaths = Math.max(save.totalDeaths, parseInt(p.totalDeaths, 10) || 0);
+  persistSave(); buildLevelGrid(); updateHud();
+}
+function onAuth(res){
+  me = res.me || {loggedIn:false};
+  restNonce = res.nonce || restNonce;
+  if(me.loggedIn){
+    mergeServerProgress(me.progress);
+    rest('progress', {progress:localProgress()}).then(r=>mergeServerProgress(r.progress)).catch(()=>{});
+  }
+  updateAccountUI();
+}
+function setAcctMsg(text, ok){
+  const el = $(me.loggedIn ? 'acctMsg2' : 'acctMsg');
+  el.textContent = text || ''; el.classList.toggle('ok', !!ok);
+}
+function updateAccountUI(){
+  const on = !!CFG;
+  ['btnAccount','btnBoardStart','btnPauseBoard','accountLine'].forEach(id=>{ $(id).hidden = !on; });
+  if(!on) return;
+  root.querySelectorAll('.lnk-terms').forEach(a=>{ if(CFG.termsUrl) a.href = CFG.termsUrl; });
+  root.querySelectorAll('.lnk-privacy').forEach(a=>{ if(CFG.privacyUrl) a.href = CFG.privacyUrl; });
+  const line = $('accountLine');
+  line.textContent = '';
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'link-btn';
+  if(me.loggedIn){
+    line.append('Signed in as ' + me.name + (me.verified ? '' : ' (email not verified)') + ' · ');
+    b.textContent = 'Account';
+  } else {
+    line.append('Playing as guest · ');
+    b.textContent = CFG.allowRegistration ? 'Sign in / create account' : 'Sign in';
+  }
+  b.addEventListener('click', openAccount);
+  line.appendChild(b);
+  $('acctGuest').hidden = me.loggedIn; $('acctUser').hidden = !me.loggedIn;
+  $('accountTitle').textContent = me.loggedIn ? 'Your account' : 'Join the leaderboard';
+  $('tabRegister').hidden = !CFG.allowRegistration;
+  if(me.loggedIn){
+    $('acctName').textContent = me.name;
+    $('acctEmail').textContent = me.email || '';
+    $('acctVerify').hidden = !!me.verified || !CFG.requireVerify;
+  }
+}
+function showTab(which){
+  const reg = which === 'register';
+  $('formSignIn').hidden = reg; $('formRegister').hidden = !reg;
+  $('tabSignIn').classList.toggle('on', !reg); $('tabRegister').classList.toggle('on', reg);
+  $('tabSignIn').setAttribute('aria-selected', String(!reg)); $('tabRegister').setAttribute('aria-selected', String(reg));
+  $('googleTerms').hidden = true; setAcctMsg('');
+}
+let accountReturn = null;
+function openAccount(){
+  if(!CFG) return;
+  Sound.unlock(); Sound.uiClick();
+  if(gameState === 'playing' || gameState === 'dead'){ gameState = 'paused'; clearKeys(); }
+  accountReturn = gameState === 'paused' ? 'pause' : null;
+  updateAccountUI(); setAcctMsg('');
+  showOverlay('accountOverlay');
+  if(!me.loggedIn) loadGoogle();
+  const f = root.querySelector('#accountOverlay input:not([type=hidden]):not([tabindex="-1"]), #accountOverlay button');
+  if(f){ try{ f.focus({preventScroll:true}); }catch(e){} }
+}
+function closeAccount(){
+  Sound.uiClick();
+  if(accountReturn === 'pause' && gameState === 'paused'){ showOverlay('pauseOverlay'); focusFirst('pauseOverlay'); }
+  else hideAllOverlays();
+}
+function formData(form){ const o = {}; new FormData(form).forEach((v, k)=>{ o[k] = v; }); return o; }
+function busy(form, on){ form.querySelectorAll('button, input').forEach(el=>{ el.disabled = on; }); }
+$('tabSignIn').addEventListener('click', ()=>showTab('signin'));
+$('tabRegister').addEventListener('click', ()=>showTab('register'));
+$('formSignIn').addEventListener('submit', (e)=>{
+  e.preventDefault();
+  const f = e.target, d = formData(f);
+  if(!d.login || !d.password){ setAcctMsg('Enter your username or email and password.'); return; }
+  busy(f, true); setAcctMsg('Signing in…', true);
+  rest('login', {login:d.login, password:d.password}).then(r=>{ onAuth(r); setAcctMsg('Welcome back, ' + me.name + '!', true); Sound.checkpoint(); })
+    .catch(err=>setAcctMsg(err.message)).then(()=>busy(f, false));
+});
+$('formRegister').addEventListener('submit', (e)=>{
+  e.preventDefault();
+  const f = e.target, d = formData(f);
+  if(!f.elements.agree.checked){ setAcctMsg('Please agree to the Terms of Service and Privacy Policy.'); return; }
+  if(!d.username || d.username.length < 3){ setAcctMsg('Choose a username of at least 3 characters.'); return; }
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email || '')){ setAcctMsg('Enter a valid email address.'); return; }
+  if(!d.password || d.password.length < 8){ setAcctMsg('Use a password of at least 8 characters.'); return; }
+  busy(f, true); setAcctMsg('Creating your account…', true);
+  rest('register', {username:d.username, email:d.email, password:d.password, agree:true, website:d.website || '', progress:localProgress()})
+    .then(r=>{ onAuth(r); setAcctMsg('Account created! We sent a verification link to ' + me.email + '.', true); Sound.victory(); })
+    .catch(err=>setAcctMsg(err.message)).then(()=>busy(f, false));
+});
+$('btnResend').addEventListener('click', ()=>{
+  rest('verify/resend', {}).then(r=>setAcctMsg(r.verified ? 'Your email is already verified.' : 'Verification email sent. Check your inbox.', true))
+    .catch(err=>setAcctMsg(err.message));
+});
+$('btnSignOut').addEventListener('click', ()=>{
+  rest('logout', {}).then(r=>{ onAuth(r); setAcctMsg('Signed out. Your progress stays on this device.', true); }).catch(err=>setAcctMsg(err.message));
+});
+$('btnGuest').addEventListener('click', closeAccount);
+$('btnAcctDone').addEventListener('click', closeAccount);
+$('btnAccount').addEventListener('click', openAccount);
+$('btnAcctBoard').addEventListener('click', ()=>openBoard());
+
+// Google Identity Services: loaded only when the account panel opens.
+let googleState = 'idle';
+function loadGoogle(){
+  if(!CFG || !CFG.googleClientId || googleState !== 'idle') return;
+  googleState = 'loading';
+  const sc = document.createElement('script');
+  sc.src = 'https://accounts.google.com/gsi/client'; sc.async = true; sc.defer = true;
+  sc.onload = ()=>{
+    try{
+      window.google.accounts.id.initialize({client_id:CFG.googleClientId, callback:(resp)=>googleCredential(resp.credential), ux_mode:'popup'});
+      window.google.accounts.id.renderButton($('googleBtn'), {theme:'outline', size:'large', text:'continue_with', shape:'pill', width:280});
+      $('googleArea').hidden = false; googleState = 'ready';
+    }catch(e){ googleState = 'failed'; }
+  };
+  sc.onerror = ()=>{ googleState = 'failed'; };
+  document.head.appendChild(sc);
+}
+function googleCredential(credential, agree){
+  pendingGoogleCredential = credential;
+  setAcctMsg('Signing in with Google…', true);
+  return rest('google', {credential, agree:!!agree}).then(r=>{
+    pendingGoogleCredential = null; $('googleTerms').hidden = true;
+    onAuth(r); setAcctMsg('Signed in as ' + me.name + '.', true); Sound.checkpoint();
+  }).catch(err=>{
+    if(err.code === 'terms_required'){ $('googleTerms').hidden = false; setAcctMsg('One more step: agree to the terms to create your account.'); }
+    else setAcctMsg(err.message);
+  });
+}
+$('btnGoogleContinue').addEventListener('click', ()=>{
+  if(!$('googleAgree').checked){ setAcctMsg('Please agree to the Terms of Service and Privacy Policy.'); return; }
+  if(pendingGoogleCredential) googleCredential(pendingGoogleCredential, true);
+});
+
+// Leaderboard panel
+(function(){
+  const sel = $('boardLevel');
+  for(let i=1;i<=LEVELS.length;i++){ const o = document.createElement('option'); o.value = String(i); o.textContent = 'Level ' + i + ' · ' + LEVELS[i-1].name; sel.appendChild(o); }
+  sel.addEventListener('change', ()=>loadBoard(parseInt(sel.value, 10) || 0));
+})();
+function fmtMs(ms){
+  ms = Math.max(0, ms|0);
+  const m = Math.floor(ms/60000), sec = (ms % 60000)/1000;
+  return m ? m + ':' + (sec < 10 ? '0' : '') + sec.toFixed(2) : sec.toFixed(2) + 's';
+}
+let boardReturn = null;
+function openBoard(level){
+  if(!CFG) return;
+  Sound.unlock(); Sound.uiClick();
+  if(gameState === 'playing' || gameState === 'dead'){ gameState = 'paused'; clearKeys(); }
+  boardReturn = $('accountOverlay').classList.contains('show') ? 'account' : (gameState === 'paused' ? 'pause' : null);
+  const lv = level != null ? level : 0;
+  $('boardLevel').value = String(lv);
+  showOverlay('boardOverlay');
+  loadBoard(lv);
+  try{ $('boardLevel').focus({preventScroll:true}); }catch(e){}
+}
+function closeBoard(){
+  Sound.uiClick();
+  if(boardReturn === 'account'){ showOverlay('accountOverlay'); return; }
+  if(boardReturn === 'pause' && gameState === 'paused'){ showOverlay('pauseOverlay'); focusFirst('pauseOverlay'); return; }
+  hideAllOverlays();
+}
+function loadBoard(level){
+  const body = $('boardBody');
+  body.textContent = '';
+  $('boardCol3').textContent = level ? 'Best time' : 'Levels';
+  $('boardCol4').textContent = level ? 'Deaths' : 'Total time';
+  $('boardNote').textContent = 'Loading…';
+  fetch(apiUrl('leaderboard', level ? 'level=' + level : ''), {credentials:'same-origin', headers:{'X-WP-Nonce':restNonce}})
+    .then(r=>r.json()).then(j=>{
+      const rows = (j && j.rows) || [];
+      rows.forEach(r=>{
+        const tr = document.createElement('tr'); if(r.isMe) tr.className = 'is-me';
+        const cells = [r.rank, r.name, level ? fmtMs(r.timeMs) : (r.cleared + ' / ' + LEVELS.length), level ? r.deaths : fmtMs(r.timeMs)];
+        cells.forEach(v=>{ const td = document.createElement('td'); td.textContent = String(v); tr.appendChild(td); });
+        body.appendChild(tr);
+      });
+      let note = rows.length ? '' : 'No times yet. Clear a level while signed in to be first.';
+      if(!me.loggedIn) note += (note ? ' ' : '') + 'Sign in to put your times on the board.';
+      else if(CFG.requireVerify && !me.verified) note += (note ? ' ' : '') + 'Verify your email to appear here.';
+      $('boardNote').textContent = note;
+    }).catch(()=>{ $('boardNote').textContent = 'Could not load the leaderboard. Check your connection.'; });
+}
+$('btnCloseBoard').addEventListener('click', closeBoard);
+$('btnBoardStart').addEventListener('click', ()=>openBoard());
+$('btnPauseBoard').addEventListener('click', ()=>openBoard());
+
+function submitClear(levelId, timeMs, deaths){
+  if(!CFG || !me.loggedIn) return;
+  rest('progress', {progress:localProgress()}).catch(()=>{});
+  if(CFG.requireVerify && !me.verified) return;
+  rest('score', {level:levelId, timeMs:Math.round(timeMs), deaths}).then(r=>{
+    if(r && r.personalBest) setTimeout(()=>showToast('New personal best on the leaderboard!'), 900);
+  }).catch(()=>{});
+}
+
+function announceVerifyResult(){
+  if(!CFG || !CFG.verifyResult) return;
+  const msg = {ok:'Email verified! Your times now count on the leaderboard.', already:'Your email was already verified.',
+    expired:'That verification link expired. Open your account to get a new one.', invalid:'That verification link is not valid.'}[CFG.verifyResult];
+  if(CFG.verifyResult === 'ok' && me.loggedIn) me.verified = true;
+  if(msg) setTimeout(()=>showToast(msg), 400);
+}
+
+/* =========================================================================
    MAIN LOOP — fixed 120 Hz simulation, rendered on requestAnimationFrame.
    Results are identical at 30, 60, 120 or 144 Hz displays.
 ========================================================================= */
@@ -2328,7 +2650,7 @@ if(DEBUG){
     view(){ return Object.assign({}, view); },
     camera(){ return Object.assign({}, camera); },
     solids(){ return levelState ? solidsOf(levelState).map(s=>({x:s.x,y:s.y,w:s.w,h:s.h})) : []; },
-    respawn, restartLevel, layout, sound: Sound
+    respawn, restartLevel, layout, sound: Sound, buildLevel, google: (c, agree)=>googleCredential(c, agree), nonce: ()=>restNonce
   };
 }
 window.DeskmanFun = api;
@@ -2338,6 +2660,8 @@ window.DeskmanFun = api;
 ========================================================================= */
 if(!touchUI) $('startHint').hidden = false; else $('startHint').hidden = true;
 layout();
+updateAccountUI();
+announceVerifyResult();
 refreshSettingsUI();
 updateHud();
 buildLevelGrid();

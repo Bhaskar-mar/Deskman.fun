@@ -3,8 +3,8 @@ Theme Name: deskman.fun
 Theme URI: https://deskman.fun
 Author: deskman.fun
 Author URI: https://deskman.fun
-Description: Minimal WordPress theme built to host the deskman.fun rage-bait platformer. Includes a fullscreen "Game" page template; regular pages/posts get a clean cream/black/red layout matching the game's visual identity. On activation, automatically creates a ready-to-play "/play" page and tidies up WordPress's default sample content.
-Version: 1.6.0
+Description: Minimal WordPress theme built to host the deskman.fun rage-bait platformer, with matching pages for the leaderboard, terms and privacy. Includes a fullscreen "Game" page template; regular pages/posts get a clean cream/black/red layout matching the game's visual identity. On activation, automatically creates a ready-to-play "/play" page and tidies up WordPress's default sample content.
+Version: 2.0.0
 Requires at least: 5.5
 Requires PHP: 7.2
 License: GPL v2 or later
@@ -12,66 +12,107 @@ License URI: https://www.gnu.org/licenses/gpl-2.0.html
 Text Domain: deskman-fun-theme
 */
 
+/* One design system shared with the game: cream / ink / red / gold,
+   Archivo Black headings, Inter body text. */
 :root{
   --cream:#efe9dc;
   --cream-2:#e5decd;
   --ink:#1a1a1a;
-  --ink-soft:#2b2b2b;
+  --ink-soft:#4a463c;
+  --muted:#7a7262;
   --red:#e0323c;
   --red-dark:#b91c26;
+  --gold:#f2b632;
   --white:#fffdf8;
+  --radius:14px;
 }
-
-*{box-sizing:border-box;}
-
+*{ box-sizing:border-box; }
+html{ -webkit-text-size-adjust:100%; }
 body{
   margin:0;
   background:var(--cream);
   color:var(--ink);
-  font-family:'Inter',system-ui,-apple-system,sans-serif;
-  line-height:1.6;
+  font:500 17px/1.65 'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;
 }
+img{ max-width:100%; height:auto; }
+a{ color:var(--red-dark); text-decoration:underline; text-underline-offset:3px; text-decoration-thickness:2px; }
+a:hover{ color:var(--red); }
+:focus-visible{ outline:3px solid var(--gold); outline-offset:2px; }
+.skip-link{ position:absolute; left:-9999px; top:8px; background:var(--ink); color:#fff; padding:8px 14px; border-radius:8px; z-index:100; }
+.skip-link:focus{ left:8px; }
 
-a{ color:var(--red); text-decoration:none; }
-a:hover{ text-decoration:underline; }
-
-/* The fullscreen Game page template renders edge-to-edge with no
-   theme chrome; prevent the host body from scrolling behind it. */
-body.dgm-fullscreen-page{
-  margin:0; padding:0; overflow:hidden; height:100%;
-  background:#1a1a1a;
-}
+/* The fullscreen Game page template renders edge-to-edge with no theme chrome. */
+body.dgm-fullscreen-page{ margin:0; padding:0; overflow:hidden; height:100%; background:#1a1a1a; }
 html:has(body.dgm-fullscreen-page){ height:100%; overflow:hidden; }
 
-.site-header{
-  display:flex; align-items:center; justify-content:space-between;
-  padding:18px 24px; background:var(--white); border-bottom:2px solid var(--ink);
-}
-.site-header .brand{
-  font-family:'Archivo Black',sans-serif; font-size:20px; color:var(--ink); letter-spacing:.5px;
-}
-.site-header .brand span{ color:var(--red); }
-.site-header nav a{
-  margin-left:18px; color:var(--ink); font-weight:700; font-size:14px; text-transform:uppercase; letter-spacing:.5px;
-}
-.site-header nav a:hover{ color:var(--red); text-decoration:none; }
+/* ---------- header ---------- */
+.site-header{ background:var(--white); border-bottom:3px solid var(--ink); position:sticky; top:0; z-index:50; }
+.admin-bar .site-header{ top:32px; }
+@media (max-width:782px){ .admin-bar .site-header{ top:46px; } }
+.site-header-inner{ max-width:1100px; margin:0 auto; padding:12px 20px; display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
+.brand{ font-family:'Archivo Black','Arial Black',sans-serif; font-size:22px; color:var(--ink); text-decoration:none; letter-spacing:.3px; }
+.brand span{ color:var(--red); }
+.brand:hover{ color:var(--ink); }
+.brand-sm{ font-size:16px; }
+.site-nav{ flex:1; }
+.site-nav ul{ list-style:none; margin:0; padding:0; display:flex; gap:6px; flex-wrap:wrap; }
+.site-nav a{ display:block; padding:8px 12px; border-radius:10px; color:var(--ink); font-weight:800; font-size:14px; letter-spacing:.4px; text-transform:uppercase; text-decoration:none; }
+.site-nav a:hover, .site-nav .current-menu-item > a, .site-nav .current_page_item > a{ background:var(--cream); color:var(--ink); }
 
-.site-content{
-  max-width:860px; margin:0 auto; padding:48px 24px; min-height:50vh;
+/* ---------- buttons ---------- */
+.play-cta, .wp-block-button__link, button[type=submit], input[type=submit], .button{
+  display:inline-block; border:none; cursor:pointer;
+  background:var(--red); color:#fff; font:800 14px/1 'Inter',system-ui,sans-serif; letter-spacing:.4px; text-transform:uppercase;
+  padding:13px 22px; border-radius:12px; box-shadow:0 4px 0 var(--red-dark); text-decoration:none;
 }
-.site-content h1{ font-family:'Archivo Black',sans-serif; font-size:32px; margin-top:0; }
-.site-content article{ margin-bottom:48px; }
-.site-content article h2 a{ color:var(--ink); }
-.site-content .entry-meta{ font-size:12px; color:#888; text-transform:uppercase; letter-spacing:.5px; }
+.play-cta:hover, .wp-block-button__link:hover, button[type=submit]:hover, input[type=submit]:hover{ color:#fff; filter:brightness(1.05); }
+.play-cta:active, button[type=submit]:active{ transform:translateY(3px); box-shadow:0 1px 0 var(--red-dark); }
+.play-cta-sm{ padding:10px 18px; }
 
-.site-footer{
-  text-align:center; padding:28px; font-size:12px; color:#888;
-  background:var(--white); border-top:2px solid var(--ink);
-}
+/* ---------- content ---------- */
+.site-content{ max-width:780px; margin:0 auto; padding:44px 20px 64px; min-height:60vh; }
+.site-content h1, .site-content h2, .site-content h3{ font-family:'Archivo Black','Arial Black',sans-serif; line-height:1.2; letter-spacing:.2px; }
+.site-content h1{ font-size:clamp(28px,5vw,40px); margin:0 0 18px; }
+.site-content h2{ font-size:22px; margin:36px 0 10px; }
+.site-content h3{ font-size:18px; margin:28px 0 8px; }
+.site-content p, .site-content ul, .site-content ol{ margin:0 0 16px; }
+.site-content li{ margin-bottom:6px; }
+.site-content article{ background:var(--white); border:3px solid var(--ink); border-radius:var(--radius); padding:28px 30px; box-shadow:0 6px 0 var(--ink); margin-bottom:36px; }
+.site-content article h2 a{ color:var(--ink); text-decoration:none; }
+.entry-meta{ font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.6px; margin-top:-8px; }
+.entry-content > *:last-child{ margin-bottom:0; }
+blockquote{ margin:0 0 16px; padding:6px 18px; border-left:4px solid var(--red); color:var(--ink-soft); }
+code{ background:var(--cream); padding:2px 6px; border-radius:6px; font-size:.9em; }
+hr{ border:none; border-top:2px solid var(--cream-2); margin:28px 0; }
 
-.play-cta{
-  display:inline-block; margin-top:18px; padding:12px 24px; border-radius:12px;
-  background:var(--red); color:#fff; font-weight:800; font-size:14px;
-  box-shadow:0 4px 0 var(--red-dark);
+/* tables (incl. the leaderboard page) */
+.site-content table{ width:100%; border-collapse:collapse; margin:0 0 16px; font-size:15px; }
+.site-content th{ background:var(--ink); color:var(--cream); text-align:left; font-size:12px; text-transform:uppercase; letter-spacing:.6px; padding:10px 12px; }
+.site-content td{ padding:10px 12px; border-bottom:1px solid var(--cream-2); }
+
+/* forms (comments etc.) */
+input[type=text], input[type=email], input[type=url], input[type=password], input[type=search], textarea, select{
+  font:500 16px/1.4 'Inter',system-ui,sans-serif; color:var(--ink); background:#fff;
+  border:2px solid var(--ink); border-radius:10px; padding:10px 12px; max-width:100%;
 }
-.play-cta:hover{ text-decoration:none; opacity:.92; }
+textarea{ width:100%; }
+.comments-area{ margin-top:12px; }
+.comment-list{ padding-left:20px; }
+
+/* ---------- footer ---------- */
+.site-footer{ background:var(--white); border-top:3px solid var(--ink); }
+.site-footer-inner{ max-width:1100px; margin:0 auto; padding:22px 20px; display:flex; align-items:center; gap:16px 22px; flex-wrap:wrap; justify-content:space-between; font-size:13px; color:var(--muted); }
+.footer-nav{ display:flex; gap:16px; flex-wrap:wrap; }
+.footer-nav a{ color:var(--ink); font-weight:700; text-decoration:none; }
+.footer-nav a:hover{ color:var(--red-dark); text-decoration:underline; }
+
+@media (max-width:640px){
+  body{ font-size:16px; }
+  .site-header-inner{ gap:10px; padding:10px 14px; }
+  .site-nav{ order:3; flex-basis:100%; }
+  .site-nav a{ padding:6px 10px; font-size:13px; }
+  .play-cta-sm{ margin-left:auto; }
+  .site-content{ padding:28px 14px 48px; }
+  .site-content article{ padding:20px 18px; }
+  .site-footer-inner{ flex-direction:column; align-items:flex-start; }
+}

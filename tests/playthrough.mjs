@@ -218,6 +218,7 @@ export async function difficulty(page, range = 160, stepSize = 4) {
       });
       L.platforms.forEach(p => { if (p.type === 'moving') react += 0.5; if (p.type === 'invisible') react += 0.3; });
       if (L.goal.type === 'fake') react += 0.3;
+      (L.triggers || []).forEach(tr => (tr.actions || []).forEach(a => { if (a.do === 'reverse' && a.on) react += 1.5; }));
       return {tiles: +tiles.toFixed(2), react: +react.toFixed(2), chase: L.hazards.some(h => h.type === 'chaser')};
     }, +id - 1);
     // chasing wall: how little speed advantage you have (run speed 380)
@@ -237,7 +238,7 @@ export async function playthroughs(page) {
     const r = await runPlan(page, i, PLANS[i + 1] || routes[i], {maxSec: 120});
     const naive = await runPlan(page, i, [{hold:'right'}, {until:'false'}], {maxSec: 20});
     results[i + 1] = {completed: r.won, time: r.t, deaths: r.deaths, step: r.step, jumps: r.log,
-      naiveHoldRightDies: !naive.won && naive.deaths.length > 0, naiveDeath: naive.deaths[0]};
+      naiveHoldRightDies: !naive.won /* dies, or (reverse zones) can never get through */, naiveDeath: naive.deaths[0]};
     if (!r.won) results[i + 1].debug = r;
   }
   return results;

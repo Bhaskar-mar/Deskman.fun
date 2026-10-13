@@ -7,7 +7,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DESKMAN_THEME_VERSION', '1.6.0' );
+define( 'DESKMAN_THEME_VERSION', '2.0.0' );
 
 /* =========================================================================
    ACTIVATION: auto-create a ready-to-play fullscreen page, tidy up the
@@ -253,3 +253,54 @@ function deskman_theme_game_markup() {
 	}
 	return (string) file_get_contents( $file ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- local theme file.
 }
+
+/* =========================================================================
+   Navigation helpers (work with or without the deskman.fun plugin)
+========================================================================= */
+function deskman_theme_page_url_from( $options ) {
+	foreach ( (array) $options as $option ) {
+		$id = (int) get_option( $option );
+		if ( $id && 'publish' === get_post_status( $id ) ) {
+			return get_permalink( $id );
+		}
+	}
+	return '';
+}
+
+function deskman_theme_play_url() {
+	$url = deskman_theme_page_url_from( array( 'deskman_theme_play_page_id', 'deskman_fun_play_page_id' ) );
+	return $url ? $url : home_url( '/' );
+}
+
+/** Default header links when no menu is assigned to the Primary location. */
+function deskman_theme_default_nav() {
+	$links = array(
+		array( 'url' => deskman_theme_play_url(), 'label' => __( 'Play', 'deskman-fun-theme' ) ),
+	);
+	$board = deskman_theme_page_url_from( array( 'deskman_fun_leaderboard_page_id' ) );
+	if ( $board ) {
+		$links[] = array( 'url' => $board, 'label' => __( 'Leaderboard', 'deskman-fun-theme' ) );
+	}
+	echo '<ul class="menu">';
+	foreach ( $links as $l ) {
+		echo '<li><a href="' . esc_url( $l['url'] ) . '">' . esc_html( $l['label'] ) . '</a></li>';
+	}
+	echo '</ul>';
+}
+
+function deskman_theme_footer_links() {
+	$links = array();
+	$map   = array(
+		array( array( 'deskman_fun_leaderboard_page_id' ), __( 'Leaderboard', 'deskman-fun-theme' ) ),
+		array( array( 'deskman_fun_terms_page_id' ), __( 'Terms of Service', 'deskman-fun-theme' ) ),
+		array( array( 'deskman_fun_privacy_page_id', 'wp_page_for_privacy_policy' ), __( 'Privacy Policy', 'deskman-fun-theme' ) ),
+	);
+	foreach ( $map as $m ) {
+		$url = deskman_theme_page_url_from( $m[0] );
+		if ( $url ) {
+			$links[] = array( 'url' => $url, 'label' => $m[1] );
+		}
+	}
+	return $links;
+}
+

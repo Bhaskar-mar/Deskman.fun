@@ -15,6 +15,7 @@
         <div class="top-buttons">
           <button type="button" class="icon-btn" id="btnRestart" title="Restart level (R)" aria-label="Restart level">&#8635;</button>
           <button type="button" class="icon-btn" id="btnFullscreen" title="Fullscreen" aria-label="Toggle fullscreen" hidden>&#x26F6;</button>
+          <button type="button" class="icon-btn" id="btnAccount" title="Account" aria-label="Account" hidden>&#128100;</button>
           <button type="button" class="icon-btn" id="btnSettings" title="Settings" aria-label="Settings">&#9881;</button>
           <button type="button" class="icon-btn" id="btnPause" title="Pause (Esc)" aria-label="Pause">&#10074;&#10074;</button>
         </div>
@@ -42,6 +43,7 @@
           <button type="button" class="btn ghost" id="btnPauseRestart">RESTART LEVEL</button>
           <button type="button" class="btn ghost" id="btnPauseSettings">SETTINGS</button>
           <button type="button" class="btn ghost" id="btnPauseMenu">LEVEL SELECT</button>
+          <button type="button" class="btn ghost" id="btnPauseBoard" hidden>LEADERBOARD</button>
         </div>
       </div>
     </div>
@@ -69,6 +71,69 @@
       </div>
     </div>
 
+    <!-- Account: sign in / create account / signed-in view -->
+    <div class="overlay dim" id="accountOverlay" role="dialog" aria-modal="true" aria-labelledby="accountTitle">
+      <div class="card wide acct">
+        <h2 id="accountTitle">Join the leaderboard</h2>
+        <div id="acctGuest">
+          <p class="acct-sub">Guests can always play. An account saves your progress across devices and puts your times on the leaderboard.</p>
+          <div class="acct-tabs" role="tablist">
+            <button type="button" role="tab" class="acct-tab on" id="tabSignIn" aria-selected="true">Sign in</button>
+            <button type="button" role="tab" class="acct-tab" id="tabRegister" aria-selected="false">Create account</button>
+          </div>
+          <div class="google-area" id="googleArea" hidden>
+            <div id="googleBtn" class="google-btn"></div>
+            <div class="acct-or"><span>or</span></div>
+          </div>
+          <form class="acct-form" id="formSignIn" novalidate>
+            <label>Username or email<input type="text" name="login" autocomplete="username" required></label>
+            <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
+            <button type="submit" class="btn primary">SIGN IN</button>
+          </form>
+          <form class="acct-form" id="formRegister" novalidate hidden>
+            <label>Username<input type="text" name="username" autocomplete="username" minlength="3" maxlength="30" required></label>
+            <label>Email<input type="email" name="email" autocomplete="email" required></label>
+            <label>Password <small>(8+ characters)</small><input type="password" name="password" autocomplete="new-password" minlength="8" required></label>
+            <label class="hp" aria-hidden="true">Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label>
+            <label class="acct-agree"><input type="checkbox" name="agree" required> <span>I am 13 or older and agree to the <a class="lnk-terms" href="#" target="_blank" rel="noopener">Terms of Service</a> and <a class="lnk-privacy" href="#" target="_blank" rel="noopener">Privacy Policy</a>.</span></label>
+            <button type="submit" class="btn primary">CREATE ACCOUNT</button>
+          </form>
+          <div class="acct-google-terms" id="googleTerms" hidden>
+            <label class="acct-agree"><input type="checkbox" id="googleAgree"> <span>I am 13 or older and agree to the <a class="lnk-terms" href="#" target="_blank" rel="noopener">Terms of Service</a> and <a class="lnk-privacy" href="#" target="_blank" rel="noopener">Privacy Policy</a>.</span></label>
+            <button type="button" class="btn primary" id="btnGoogleContinue">CREATE ACCOUNT WITH GOOGLE</button>
+          </div>
+          <p class="acct-msg" id="acctMsg" role="alert"></p>
+          <button type="button" class="btn ghost" id="btnGuest">KEEP PLAYING AS GUEST</button>
+        </div>
+        <div id="acctUser" hidden>
+          <p class="acct-hello">Signed in as <strong id="acctName"></strong></p>
+          <div class="acct-verify" id="acctVerify" hidden>
+            <p>Verify <strong id="acctEmail"></strong> to appear on the leaderboard. Check your inbox (and spam).</p>
+            <button type="button" class="btn ghost" id="btnResend">RESEND EMAIL</button>
+          </div>
+          <p class="acct-msg" id="acctMsg2" role="status"></p>
+          <div class="row">
+            <button type="button" class="btn primary" id="btnAcctBoard">LEADERBOARD</button>
+            <button type="button" class="btn ghost" id="btnSignOut">SIGN OUT</button>
+          </div>
+          <button type="button" class="btn ghost acct-done" id="btnAcctDone">DONE</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Leaderboard -->
+    <div class="overlay dim" id="boardOverlay" role="dialog" aria-modal="true" aria-labelledby="boardTitle">
+      <div class="card wide board">
+        <h2 id="boardTitle">Leaderboard</h2>
+        <label class="board-filter">Show
+          <select id="boardLevel"><option value="0">Overall ranking</option></select>
+        </label>
+        <div class="board-scroll"><table class="board-table"><thead><tr><th>#</th><th>Player</th><th id="boardCol3">Levels</th><th id="boardCol4">Total time</th></tr></thead><tbody id="boardBody"></tbody></table></div>
+        <p class="board-note" id="boardNote"></p>
+        <button type="button" class="btn ghost" id="btnCloseBoard">CLOSE</button>
+      </div>
+    </div>
+
     <!-- Start screen -->
     <div id="startScreen">
       <div class="bigtitle">deskman<span>.fun</span></div>
@@ -78,7 +143,9 @@
         <button type="button" class="btn primary" id="btnPlay">PLAY</button>
         <button type="button" class="btn ghost" id="btnLevelSelectStart">LEVELS</button>
         <button type="button" class="btn ghost" id="btnSettingsStart">SETTINGS</button>
+        <button type="button" class="btn ghost" id="btnBoardStart" hidden>LEADERBOARD</button>
       </div>
+      <p class="account-line" id="accountLine" hidden></p>
       <p class="start-hint" id="startHint">&#8592; &#8594; / A D to move &middot; &#8593; / W / Space to jump &middot; R to restart</p>
     </div>
   </div>

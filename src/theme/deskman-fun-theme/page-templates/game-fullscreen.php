@@ -21,7 +21,17 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 <div id="deskman-fun-root">
 	<div class="dgm-wrap dgm-wrap-full">
-		<?php echo deskman_theme_game_markup(); // phpcs:ignore WordPress.Security.EscapeOutput -- static trusted markup shipped with the theme. ?>
+		<?php
+		// Defensive: during a partial update (e.g. files mid-upload over FTP) the
+		// theme's functions.php may not match this template; never fatal.
+		if ( function_exists( 'deskman_theme_game_markup' ) ) {
+			echo deskman_theme_game_markup(); // phpcs:ignore WordPress.Security.EscapeOutput -- static trusted markup shipped with the theme.
+		} elseif ( function_exists( 'deskman_fun_game_markup' ) ) {
+			echo deskman_fun_game_markup(); // phpcs:ignore WordPress.Security.EscapeOutput -- static trusted markup shipped with the plugin.
+		} else {
+			echo '<!-- deskman.fun: game markup unavailable while the theme updates; reload in a moment. -->';
+		}
+		?>
 	</div>
 </div>
 
