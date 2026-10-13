@@ -308,14 +308,68 @@ body.admin-bar #deskman-fun-root .dgm-wrap-full #app{ top:32px; height:calc(100v
   display:flex; flex-direction:column; align-items:center; justify-content:center;
   text-align:center; padding:20px;
 }
-#deskman-fun-root #startScreen .bigtitle{ font-size:clamp(40px,10vw,76px); line-height:1; }
-#deskman-fun-root #startScreen .bigtag{
-  font-size:clamp(11px,2vw,14px); letter-spacing:4px; font-weight:700; color:var(--dgm-ink-soft);
-  text-transform:uppercase; margin-top:10px;
+#deskman-fun-root #startScreen{ overflow:hidden; background:linear-gradient(#f3eee3, #ebe3d2); }
+#deskman-fun-root .start-scene{ position:absolute; inset:0; width:100%; height:100%; display:block; pointer-events:none; }
+#deskman-fun-root .start-scene .ss-saw-spin{ transform-box:fill-box; transform-origin:center; animation:dmf-spin 6s linear infinite; }
+#deskman-fun-root .start-scene .ss-clouds{ animation:dmf-drift 18s ease-in-out infinite alternate; }
+@keyframes dmf-spin{ to{ transform:rotate(360deg); } }
+@keyframes dmf-drift{ from{ transform:translateX(-14px); } to{ transform:translateX(14px); } }
+@media (prefers-reduced-motion:reduce){
+  #deskman-fun-root .start-scene .ss-saw-spin,
+  #deskman-fun-root .start-scene .ss-clouds{ animation:none; }
 }
-#deskman-fun-root #introCanvas{ margin-top:16px; width:200px; height:90px; }
-#deskman-fun-root #startScreen .menu-row{ display:flex; gap:12px; margin-top:20px; flex-wrap:wrap; justify-content:center; }
-#deskman-fun-root #startScreen .start-hint{ margin:18px 0 0; font-size:12px; font-weight:600; color:#7a7262; }
+#deskman-fun-root .start-content{
+  position:relative; display:flex; flex-direction:column; align-items:center;
+  max-width:100%; max-height:100%;
+}
+#deskman-fun-root #startScreen .bigtitle{
+  position:relative; font-size:clamp(44px,min(7.6vw,13.5vh),124px); line-height:1; letter-spacing:0;
+}
+#deskman-fun-root #startScreen .title-marks{
+  position:absolute; right:-0.42em; top:-0.38em; width:0.5em; height:0.5em; overflow:visible;
+}
+#deskman-fun-root #startScreen .title-marks path{ fill:none; stroke:#4a4640; stroke-width:6; stroke-linecap:round; }
+#deskman-fun-root #startScreen .bigtag{
+  font-size:clamp(12px,1.9vw,24px); letter-spacing:0.42em; font-weight:800; color:var(--dgm-ink);
+  text-transform:uppercase; margin-top:0.55em; padding-left:0.42em;
+}
+#deskman-fun-root #introCanvas{ margin-top:clamp(8px,2vh,22px); width:clamp(200px,22vw,320px); height:auto; aspect-ratio:320/140; }
+#deskman-fun-root #startScreen .menu-row{ display:flex; gap:clamp(10px,1.6vw,22px); margin-top:clamp(14px,3vh,30px); flex-wrap:wrap; justify-content:center; }
+#deskman-fun-root #startScreen .menu-row .btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:0.6em;
+  font-size:clamp(14px,1.55vw,22px); min-height:clamp(46px,6.4vh,64px);
+  padding:0.7em 1.2em; border-radius:14px; letter-spacing:0.02em;
+}
+#deskman-fun-root #startScreen .menu-row .btn.primary{ padding-left:1.7em; padding-right:1.9em; box-shadow:0 5px 0 var(--dgm-red-dark), 0 10px 18px rgba(224,50,60,0.25); }
+#deskman-fun-root #startScreen .menu-row .btn.ghost{ background:#e8e0cd; box-shadow:0 5px 0 #c9bea6, 0 8px 14px rgba(60,50,30,0.12); }
+#deskman-fun-root #startScreen .menu-row .btn:active{ transform:translateY(3px); }
+#deskman-fun-root #startScreen .menu-row .bi{ width:1.15em; height:1.15em; fill:currentColor; flex:none; }
+#deskman-fun-root #startScreen .menu-row .btn.primary .bi{ width:1.3em; height:1.3em; }
+#deskman-fun-root #startScreen .account-line{ font-size:clamp(13px,1.2vw,17px); }
+#deskman-fun-root #startScreen .start-hint{
+  margin:clamp(10px,2.2vh,20px) 0 0; font-size:clamp(12px,1.15vw,16px); font-weight:600; color:#6f6757;
+  display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:6px;
+}
+#deskman-fun-root #startScreen .start-hint kbd{
+  font-family:inherit; font-size:0.95em; font-weight:700; color:var(--dgm-ink-soft);
+  display:inline-block; min-width:1.9em; padding:0.25em 0.5em; border-radius:6px;
+  background:#ece4d3; border:1px solid #d6ccb7; box-shadow:0 2px 0 #d0c5ae;
+}
+#deskman-fun-root #startScreen .start-hint .sep{ margin:0 4px; }
+@media (max-aspect-ratio:1/1){
+  /* Portrait: keep the scenery as a band along the bottom so more of it shows. */
+  #deskman-fun-root .start-scene{ top:auto; height:46%; -webkit-mask-image:linear-gradient(transparent, #000 35%); mask-image:linear-gradient(transparent, #000 35%); }
+}
+@media (max-width:640px){
+  #deskman-fun-root #startScreen .menu-row .btn{ flex:1 1 40%; }
+  #deskman-fun-root #startScreen .menu-row{ width:100%; max-width:420px; }
+}
+@media (max-height:480px){
+  #deskman-fun-root #startScreen .bigtitle{ font-size:clamp(34px,8vh,64px); }
+  #deskman-fun-root #introCanvas{ width:150px; margin-top:4px; }
+  #deskman-fun-root #startScreen .menu-row{ margin-top:8px; }
+  #deskman-fun-root #startScreen .menu-row .btn{ min-height:42px; font-size:14px; }
+}
 
 /* ---------- small screens ---------- */
 @media (max-width:640px){

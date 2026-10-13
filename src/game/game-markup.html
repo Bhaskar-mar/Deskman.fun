@@ -136,17 +136,69 @@
 
     <!-- Start screen -->
     <div id="startScreen">
-      <div class="bigtitle">deskman<span>.fun</span></div>
-      <div class="bigtag">RUN. FAIL. REPEAT.</div>
-      <canvas id="introCanvas" width="200" height="90"></canvas>
-      <div class="menu-row">
-        <button type="button" class="btn primary" id="btnPlay">PLAY</button>
-        <button type="button" class="btn ghost" id="btnLevelSelectStart">LEVELS</button>
-        <button type="button" class="btn ghost" id="btnSettingsStart">SETTINGS</button>
-        <button type="button" class="btn ghost" id="btnBoardStart" hidden>LEADERBOARD</button>
+      <svg class="start-scene" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice" aria-hidden="true" focusable="false">
+        <defs>
+          <filter id="dmfBlur" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="5"/></filter>
+          <linearGradient id="dmfSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f3eee3"/><stop offset="1" stop-color="#ebe3d2"/></linearGradient>
+        </defs>
+        <rect width="1600" height="900" fill="url(#dmfSky)"/>
+        <circle cx="1360" cy="220" r="66" fill="#f8f3e8"/>
+        <g class="ss-clouds" fill="#e3dacb">
+          <path d="M170 210h150a28 28 0 0 0-26-38 40 40 0 0 0-76-6 30 30 0 0 0-48 44z"/>
+          <path d="M395 420h120a24 24 0 0 0-22-32 34 34 0 0 0-64-4 26 26 0 0 0-34 36z"/>
+          <path d="M1505 190h120a24 24 0 0 0-22-32 34 34 0 0 0-64-4 26 26 0 0 0-34 36z"/>
+        </g>
+        <rect x="0" y="555" width="1600" height="345" fill="#e7dfcd"/>
+        <g fill="#e2d9c8">
+          <path d="M0 520 100 250 210 400 270 330 400 520z"/>
+          <path d="M470 560 580 470 650 520 760 430 900 560z"/>
+          <path d="M1100 560 1230 400 1330 480 1450 380 1600 520v40z"/>
+        </g>
+        <g fill="#d8cfbd">
+          <path d="M150 560 270 370 380 560z"/>
+          <path d="M1280 560 1370 450 1460 560z"/>
+          <rect x="0" y="500" width="180" height="400"/>
+          <rect x="240" y="540" width="140" height="360"/>
+          <rect x="300" y="510" width="62" height="34"/>
+          <rect x="1105" y="545" width="140" height="355"/>
+          <rect x="1085" y="590" width="170" height="310"/>
+          <rect x="1380" y="625" width="130" height="275"/>
+          <rect x="1490" y="425" width="130" height="475"/>
+        </g>
+        <g fill="#cfc5b1">
+          <path d="M25 500l16-34 16 34zM60 500l16-34 16 34zM95 500l16-34 16 34zM130 500l16-34 16 34z"/>
+          <path d="M405 560l13-28 13 28z"/>
+          <path d="M1118 545l14-28 14 28zM1146 545l14-28 14 28zM1174 545l14-28 14 28zM1202 545l14-28 14 28z"/>
+          <path d="M1380 625l16-34 16 34zM1412 625l16-34 16 34zM1444 625l16-34 16 34zM1476 625l16-34 16 34z"/>
+        </g>
+        <g class="ss-saw-chain" stroke="#c9bfab" stroke-width="5" stroke-dasharray="4 5" fill="none"><path d="M1328 385v100"/></g>
+        <g class="ss-saw" transform="translate(1328 515)">
+          <g class="ss-saw-spin" fill="#c4baa5">
+            <circle r="30"/>
+            <path d="M0-40 7-29H-7zM0 40 7 29H-7zM-40 0-29 7V-7zM40 0 29 7V-7zM28-28 25-15 15-25zM-28 28-25 15-15 25zM28 28 15 25 25 15zM-28-28-15-25-25-15z"/>
+            <circle r="9" fill="#ddd4c3"/>
+          </g>
+        </g>
+        <g class="ss-flag"><rect x="1530" y="310" width="8" height="115" fill="#b9ae98"/><path d="M1538 312 1586 334 1538 356z" fill="#e8908f"/></g>
+        <g fill="#2a2724" filter="url(#dmfBlur)" opacity=".86">
+          <path d="M-20 900V660h70v40h40v100h70v40h80v-60h40l30-70 30 70h30v120z"/>
+          <path d="M150 840l38-90 38 90zM226 840l32-70 32 70z"/>
+          <path d="M1620 900V760l-30-70-28 70-28-70-30 70h-40v40h-80l-30-60-30 60h-40v100z"/>
+        </g>
+      </svg>
+      <div class="start-content">
+        <div class="bigtitle">deskman<span>.fun</span><svg class="title-marks" viewBox="0 0 70 70" aria-hidden="true" focusable="false"><path d="M18 6 13 30M44 22 30 38M62 54 40 57"/></svg></div>
+        <div class="bigtag">RUN. FAIL. REPEAT.</div>
+        <canvas id="introCanvas" width="320" height="140"></canvas>
+        <div class="menu-row">
+          <button type="button" class="btn primary" id="btnPlay"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 3.5v17a1 1 0 0 0 1.5.86l14-8.5a1 1 0 0 0 0-1.72l-14-8.5A1 1 0 0 0 6 3.5z"/></svg><span>PLAY</span></button>
+          <button type="button" class="btn ghost" id="btnLevelSelectStart"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="11" width="5" height="10" rx="1.2"/><rect x="9.5" y="4" width="5" height="17" rx="1.2"/><rect x="16" y="8" width="5" height="13" rx="1.2"/></svg><span>LEVELS</span></button>
+          <button type="button" class="btn ghost" id="btnSettingsStart"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill-rule="evenodd" d="M10.3 2h3.4l.5 2.6 1.9.8 2.2-1.5 2.4 2.4-1.5 2.2.8 1.9 2.6.5v3.4l-2.6.5-.8 1.9 1.5 2.2-2.4 2.4-2.2-1.5-1.9.8-.5 2.6h-3.4l-.5-2.6-1.9-.8-2.2 1.5-2.4-2.4 1.5-2.2-.8-1.9L2 13.7v-3.4l2.6-.5.8-1.9-1.5-2.2 2.4-2.4 2.2 1.5 1.9-.8zM12 8.3a3.7 3.7 0 1 0 0 7.4 3.7 3.7 0 0 0 0-7.4z"/></svg><span>SETTINGS</span></button>
+          <button type="button" class="btn ghost" id="btnBoardStart" hidden><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 2h12v2h4v3a5 5 0 0 1-4.6 5A6 6 0 0 1 13 15.9V19h4v3H7v-3h4v-3.1A6 6 0 0 1 6.6 12 5 5 0 0 1 2 7V4h4zm0 4H4v1a3 3 0 0 0 2 2.8zm12 0v3.8A3 3 0 0 0 20 7V6z"/></svg><span>LEADERBOARD</span></button>
+        </div>
+        <p class="account-line" id="accountLine" hidden></p>
+        <p class="start-hint" id="startHint"><kbd>&#8592; &#8594;</kbd> <kbd>A</kbd> <kbd>D</kbd> to move <span class="sep">&middot;</span> <kbd>&#8593;</kbd> / <kbd>W</kbd> / <kbd>Space</kbd> to jump <span class="sep">&middot;</span> <kbd>R</kbd> to restart</p>
       </div>
-      <p class="account-line" id="accountLine" hidden></p>
-      <p class="start-hint" id="startHint">&#8592; &#8594; / A D to move &middot; &#8593; / W / Space to jump &middot; R to restart</p>
     </div>
   </div>
 </div>

@@ -4,7 +4,7 @@ Tags: game, html5, canvas, platformer, shortcode
 Requires at least: 5.5
 Tested up to: 6.6
 Requires PHP: 7.2
-Stable tag: 2.0.0
+Stable tag: 2.0.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -88,6 +88,10 @@ with a mouse. In portrait the controls sit in their own band below the play area
 in landscape they are translucent and the camera keeps the start and exit clear of them.
 
 == Changelog ==
+
+= 2.0.1 =
+* New start screen: illustrated background (mountains, spikes, saw, goal flag), bolder logo, larger running
+  stickman, icon buttons and keycap-style controls. Respects reduced-motion settings.
 
 = 2.0.0 =
 * Renamed to deskman.fun everywhere (plugin, theme, game, pages).

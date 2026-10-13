@@ -7,7 +7,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DESKMAN_THEME_VERSION', '2.0.0' );
+define( 'DESKMAN_THEME_VERSION', '2.0.1' );
 
 /* =========================================================================
    ACTIVATION: auto-create a ready-to-play fullscreen page, tidy up the

@@ -11,7 +11,7 @@ if(!root || root.getAttribute('data-dgm-init')) return;
 root.setAttribute('data-dgm-init','1');
 
 const $ = (id)=>document.getElementById(id);
-const GAME_VERSION = '2.0.0';
+const GAME_VERSION = '2.0.1';
 const DEBUG = window.DESKMAN_DEBUG === true;
 
 /* =========================================================================
@@ -2607,16 +2607,29 @@ function animateIntro(){
   const c = $('introCanvas');
   const ic = c.getContext('2d');
   const p = { t:0, idleT:0, locoPhase:0, vx:MOVE_SPEED, vy:0, state:'run', airTime:0, accelLean:0, landTimer:0, standingOn:null };
+  const W = 320, H = 140, dpr = Math.min(3, window.devicePixelRatio || 1);
+  c.width = Math.round(W*dpr); c.height = Math.round(H*dpr);
   let last = 0;
   function loop(ts){
     if($('startScreen').hidden) return;
     const dt = last ? Math.min(0.05, (ts-last)/1000) : 0.016; last = ts;
     p.t += dt; p.locoPhase = (p.locoPhase + (MOVE_SPEED/STRIDE_LEN)*dt*Math.PI*2) % (Math.PI*2);
-    ic.setTransform(1,0,0,1,0,0);
-    ic.clearRect(0, 0, c.width, c.height);
-    ic.fillStyle = '#1a1a1a'; ic.fillRect(20, 82, 160, 8);
-    ic.translate(100, 82); ic.scale(1.25, 1.25);
-    drawStickman(ic, computePose(p), 4);
+    ic.setTransform(dpr,0,0,dpr,0,0);
+    ic.clearRect(0, 0, W, H);
+    // Ground bar.
+    ic.fillStyle = '#1a1a1a';
+    ic.beginPath();
+    if(ic.roundRect) ic.roundRect(30, 124, 260, 12, 3); else ic.rect(30, 124, 260, 12);
+    ic.fill();
+    // Speed lines behind the runner, flickering with the stride.
+    ic.strokeStyle = 'rgba(26,26,26,0.32)'; ic.lineCap = 'round'; ic.lineWidth = 4;
+    const f = Math.sin(p.locoPhase*2)*4;
+    ic.beginPath();
+    ic.moveTo(104+f, 70); ic.lineTo(128+f, 70);
+    ic.moveTo(94-f, 84); ic.lineTo(122-f, 84);
+    ic.stroke();
+    ic.translate(166, 124); ic.scale(1.7, 1.7);
+    drawStickman(ic, computePose(p), 4.2);
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);

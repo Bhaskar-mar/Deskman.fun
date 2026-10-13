@@ -18,8 +18,8 @@ A short, surprise-driven stickman platformer (30 levels, easy → devil) deliver
 
 ```bash
 ./tools/build.sh
-# → dist/deskman-fun-2.0.0.zip
-# → dist/deskman-fun-theme-2.0.0.zip
+# → dist/deskman-fun-2.0.1.zip
+# → dist/deskman-fun-theme-2.0.1.zip
 ```
 
 The script needs only `bash`, `zip` and `sed`. Each ZIP contains a single top-level folder (`deskman-fun/` and `deskman-fun-theme/`), which is the layout WordPress expects for uploads. `dist/` is git-ignored.
@@ -28,12 +28,12 @@ The script needs only `bash`, `zip` and `sed`. Each ZIP contains a single top-le
 
 Back up the site (files and database) first. Then:
 
-1. **Plugin.** Go to *Plugins → Add New → Upload Plugin* and choose `deskman-fun-2.0.0.zip`. WordPress offers *Replace current with uploaded*; accept it.
-2. **Theme** (if you use it). Go to *Appearance → Themes → Add New → Upload Theme* and choose `deskman-fun-theme-2.0.0.zip`, then *Replace current with uploaded*.
-3. Hard-refresh the Play page. Assets are versioned `?ver=2.0.0`, so browser and CDN caches pick up the new files. If you run a page-cache plugin, purge it once.
+1. **Plugin.** Go to *Plugins → Add New → Upload Plugin* and choose `deskman-fun-2.0.1.zip`. WordPress offers *Replace current with uploaded*; accept it.
+2. **Theme** (if you use it). Go to *Appearance → Themes → Add New → Upload Theme* and choose `deskman-fun-theme-2.0.1.zip`, then *Replace current with uploaded*.
+3. Hard-refresh the Play page. Assets are versioned `?ver=2.0.1`, so browser and CDN caches pick up the new files. If you run a page-cache plugin, purge it once.
 
 Upgrade notes:
-* 2.0.0 adds a `{prefix}deskman_scores` table and Terms / Privacy / Leaderboard pages. They are created automatically on the first page load after the upgrade (no reactivation needed). Existing pages with those slugs are never overwritten. The `/play` page and front-page setting are left as they are.
+* 2.0 adds a `{prefix}deskman_scores` table and Terms / Privacy / Leaderboard pages. They are created automatically on the first page load after the upgrade (no reactivation needed). Existing pages with those slugs are never overwritten. The `/play` page and front-page setting are left as they are.
 * Review the generated Terms and Privacy pages, set up SMTP for verification emails, and optionally add a Google client ID under *Settings → deskman.fun*. See `releases/INSTALL.md`.
 * Player progress lives in each visitor's browser under the same key as v1.2.0, so it carries over. Loading never lowers progress.
 * The shortcode and its attributes are unchanged. `max_width` now only accepts a single CSS length (`960px`, `80%`, `60rem`, `90vw`); anything else falls back to `960px`.
