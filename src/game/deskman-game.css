@@ -45,6 +45,8 @@ html.dgm-lock-scroll body{
   aspect-ratio:16 / 9;
   max-height:85vh;
   border-radius:14px;
+  background:var(--dgm-cream);
+  box-shadow:0 0 0 2px var(--dgm-ink), 0 6px 0 2px var(--dgm-ink);
 }
 @supports not (aspect-ratio: 1 / 1){
   #deskman-fun-root .dgm-wrap-embed #app{ height:56.25vw; }
@@ -58,6 +60,11 @@ html.dgm-lock-scroll body{
   position:fixed; inset:0;
   width:100vw; height:100vh; height:100dvh;
   z-index:99990;
+}
+/* Keep the fullscreen game below the WordPress admin bar for logged-in users. */
+body.admin-bar #deskman-fun-root .dgm-wrap-full #app{ top:32px; height:calc(100vh - 32px); height:calc(100dvh - 32px); }
+@media screen and (max-width:782px){
+  body.admin-bar #deskman-fun-root .dgm-wrap-full #app{ top:46px; height:calc(100vh - 46px); height:calc(100dvh - 46px); }
 }
 /* Element fullscreen (from the embed's fullscreen button). */
 #deskman-fun-root #app:fullscreen{ width:100vw; height:100vh; aspect-ratio:auto; max-height:none; border-radius:0; }
@@ -83,7 +90,7 @@ html.dgm-lock-scroll body{
   display:flex; align-items:flex-start; justify-content:space-between; gap:8px;
   padding:max(12px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 12px max(14px, env(safe-area-inset-left));
 }
-#deskman-fun-root .logo{ display:flex; flex-direction:column; line-height:1; min-width:0; }
+#deskman-fun-root .logo{ display:flex; flex-direction:column; line-height:1; min-width:0; background:rgba(239,233,220,0.85); padding:5px 8px; border-radius:8px; margin:-5px 0 0 -8px; }
 #deskman-fun-root .logo .title,
 #deskman-fun-root #startScreen .bigtitle{
   font-family:'Archivo Black','Arial Black',Impact,sans-serif;
@@ -199,13 +206,18 @@ html.dgm-lock-scroll body{
 #deskman-fun-root .jump-btn span{ font-size:10px; font-weight:800; letter-spacing:1px; margin-top:3px; }
 #deskman-fun-root .ctrl-btn.active,
 #deskman-fun-root .jump-btn.active{ transform:translateY(3px); box-shadow:0 1px 0 #000; opacity:1; }
+/* Landscape touch: buttons sit over the world, so keep hazards visible through them. */
+#deskman-fun-root.dgm-touch:not(.dgm-portrait) .ctrl-btn{ background:rgba(26,26,26,0.42); box-shadow:0 3px 0 rgba(0,0,0,0.35); opacity:1; }
+#deskman-fun-root.dgm-touch:not(.dgm-portrait) .jump-btn{ background:rgba(224,50,60,0.5); box-shadow:0 4px 0 rgba(185,28,38,0.45); opacity:1; }
+#deskman-fun-root.dgm-touch:not(.dgm-portrait) .ctrl-btn.active{ background:rgba(26,26,26,0.62); }
+#deskman-fun-root.dgm-touch:not(.dgm-portrait) .jump-btn.active{ background:rgba(224,50,60,0.72); }
 #deskman-fun-root.dgm-portrait .ctrl-btn,
 #deskman-fun-root.dgm-portrait .jump-btn{ opacity:1; box-shadow:0 4px 0 #000; background:#3a3833; }
 #deskman-fun-root.dgm-portrait .jump-btn{ background:var(--dgm-red); box-shadow:0 4px 0 var(--dgm-red-dark); }
 
 /* ---------- overlays ---------- */
 #deskman-fun-root .overlay{
-  position:absolute; inset:0; z-index:10;
+  position:absolute; inset:0; z-index:30; /* above #startScreen (20) so LEVELS/SETTINGS open from the menu */
   display:flex; align-items:center; justify-content:center;
   pointer-events:none; opacity:0;
   transition:opacity .12s;
@@ -225,7 +237,7 @@ html.dgm-lock-scroll body{
   transform:translateY(10px) scale(0.97);
   transition:transform .14s;
 }
-#deskman-fun-root .card.wide{ max-width:460px; }
+#deskman-fun-root .card.wide{ max-width:540px; }
 #deskman-fun-root .overlay.show .card{ transform:none; }
 #deskman-fun-root .card h2{
   font-family:'Archivo Black','Arial Black',Impact,sans-serif;
@@ -269,7 +281,7 @@ html.dgm-lock-scroll body{
 #deskman-fun-root .switch.on .knob{ left:23px; }
 
 #deskman-fun-root .level-select-grid{
-  display:grid; grid-template-columns:repeat(auto-fill, minmax(76px, 1fr)); gap:10px; margin:14px 0 18px;
+  display:grid; grid-template-columns:repeat(auto-fit, minmax(80px, 1fr)); gap:10px; margin:14px 0 18px;
 }
 #deskman-fun-root .lvl-tile{
   position:relative; min-height:84px; padding:8px 4px; margin:0;

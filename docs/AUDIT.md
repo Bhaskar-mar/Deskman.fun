@@ -71,6 +71,10 @@ Bugs marked "observed" were reproduced in headless Chromium against the original
 ### Audio and performance
 16. An AudioContext is created and notes are scheduled before any user gesture (music `setInterval` at boot). The intro-stickman `setInterval` runs forever, even after the start screen is gone. There is an empty rAF loop.
 
+### Found later, during testing against real WordPress
+19. **LEVELS and SETTINGS on the start screen open *behind* it (observed in the v1.2.0 build).** `#startScreen` has z-index 20 and the overlays have none, so the buttons appear to do nothing.
+20. For logged-in users, the fullscreen game is covered by the WordPress admin bar (`position:fixed; inset:0` ignores the 32px/46px bar).
+
 ### Duplicates and obsolete code
 17. The JS, CSS and markup are each duplicated in the plugin and the theme. Unused code: `reverseControls`, `gravityFlip`, `THEME_BG` cave/city/factory, `p.usedBufferedJump`, `.annot`, `.small-hint`, and the "Introduction 1–3" stepper (3 steps for a 5-level game).
 18. Death particles are green, which is off-palette for a cream, black and red identity.
@@ -80,19 +84,25 @@ Bugs marked "observed" were reproduced in headless Chromium against the original
 
 ## 4. Changes made
 
+All items above are addressed. Details are in the commit history, `README.md` and `docs/LEVELS.md`.
+
 * **Single source of truth.** `src/game/` holds the engine JS, CSS and markup. `tools/build.sh` copies them into both packages and builds the ZIPs into `dist/`. The original ZIPs are untouched.
-* **Engine (kept, not replaced).** Same canvas renderer, procedural stickman, data-driven level schema, DOM UI and save key. Changes:
+* **Engine (kept, not replaced).** Same canvas renderer, procedural stickman, data-driven level schema, DOM UI, synthesized audio and save key. Changes:
   * wrapped in an IIFE;
   * rAF with a fixed-step simulation at 120 Hz;
-  * collision against previous platform positions;
-  * depenetration and a crush check;
+  * collision against previous platform positions, a depenetration pass and a crush check;
   * variable jump height;
-  * auto-respawn with optional checkpoints;
-  * a new chaser hazard;
-  * five redesigned levels, each verified completable by automated play-throughs.
-* **Responsive layout.** Scoped CSS, a real inline-embed mode, and a portrait framing that zooms in and keeps a control band below the world. Uses ResizeObserver.
-* **Input.** Keys are captured only while the game is focused (or fullscreen), never inside form fields. Touch buttons use pointer capture; the stage only blocks touch gestures in fullscreen.
-* **WordPress.** Markup is loaded from one file, `max_width` is validated, there is a once-per-page guard, the theme gets `singular.php`, the duplicate `<title>` is removed, and the version is bumped to 1.3.0 for cache busting.
-* **Save data.** The `deskmanfun_save_v1` key and fields are preserved. Loading validates the fields and only adds new ones, so existing progress survives.
+  * auto-respawn with checkpoints;
+  * generic trigger actions, a chaser hazard, and crushers that are lethal while falling and solid once landed;
+  * five redesigned levels.
+* **Responsive layout.** Scoped CSS, a real inline-embed mode, a portrait framing with its own control band, camera padding so touch buttons never hide the spawn or the exit, and ResizeObserver.
+* **Input.** Keys are captured only while the game is focused (or fullscreen), never inside form fields. The d-pad allows sliding between directions, and jump works with multi-touch. The game pauses on blur, on a hidden tab, or when scrolled out of view.
+* **WordPress.**
+  * Markup is loaded from one file, and `max_width` is validated.
+  * Only one instance renders per page, and the theme and plugin share the font handle.
+  * The theme gets `singular.php` and `comments.php` and loses its duplicate `<title>`.
+  * The fullscreen game respects the admin bar.
+  * Version 1.3.0 for cache busting.
+* **Save data.** The `deskmanfun_save_v1` key and fields are preserved. Loading validates the fields, keeps unknown ones, and never lowers progress. New per-level stats are stored next to the existing fields.
 
 Progression features (map, coins, skins, accounts, leaderboard) are deliberately **not** faked. See `docs/PROGRESSION.md`.

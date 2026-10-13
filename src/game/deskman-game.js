@@ -393,7 +393,7 @@ let accumulator = 0;
 let lastFrame = 0;
 let loopPaused = false;  // debug: stop the rAF loop from advancing the simulation
 const camera = { x:0, y:0, shake:0 };
-const view = { scale:1, w:1600, h:VH, offY:0, band:0, cssW:0, cssH:0, dpr:1 };
+const view = { scale:1, w:1600, h:VH, offY:0, band:0, cssW:0, cssH:0, dpr:1, padL:0, padR:0 };
 let particles = [];
 let checkpointIndex = -1;    // persists across deaths within the current level attempt
 let attemptDeaths = 0;       // deaths since the level was (re)entered
@@ -1144,6 +1144,16 @@ function layout(){
   view.offY = extra - view.band;
   root.classList.toggle('dgm-portrait', view.band > 1);
   stage.style.setProperty('--dgm-band', Math.round(view.band*view.scale) + 'px');
+  // Touch layouts without a control band (landscape): let the camera run
+  // past the level edges far enough that the spawn point and the exit are
+  // never hidden under the d-pad or the jump button.
+  view.padL = view.padR = 0;
+  if(touchUI && view.band <= 1){
+    const st = stage.getBoundingClientRect();
+    const dp = dpad.getBoundingClientRect(), jb = btnJump.getBoundingClientRect();
+    if(dp.width) view.padL = Math.max(0, (dp.right - st.left + 24)/view.scale - 60);
+    if(jb.width) view.padR = Math.max(0, (st.right - jb.left + 24)/view.scale - 80);
+  }
 }
 if(typeof ResizeObserver === 'function') new ResizeObserver(()=>layout()).observe(app);
 window.addEventListener('resize', layout);
@@ -1151,10 +1161,11 @@ window.addEventListener('orientationchange', ()=>setTimeout(layout, 120));
 
 function cameraTarget(ls){
   const p = ls.player;
-  const maxX = ls.data.width - view.w;
-  if(maxX <= 0) return maxX/2;
+  const minX = -view.padL;
+  const maxX = ls.data.width - view.w + view.padR;
+  if(maxX <= minX) return (minX + maxX)/2;
   const tx = p.x + p.w/2 - view.w*0.4 + p.facing*view.w*0.04;
-  return Math.max(0, Math.min(tx, maxX));
+  return Math.max(minX, Math.min(tx, maxX));
 }
 function snapCameraToPlayer(){ if(levelState) camera.x = cameraTarget(levelState); }
 function updateCamera(ls, dt){
@@ -1655,7 +1666,6 @@ function buildLevelGrid(){
   });
 }
 
-let lastFocus = null;
 function showOverlay(id){
   root.querySelectorAll('.overlay').forEach(o=>o.classList.remove('show'));
   $(id).classList.add('show');
@@ -1668,7 +1678,6 @@ function focusFirst(id){
   if(b){ try{ b.focus({preventScroll:true}); }catch(e){} }
 }
 
-let toastTimer = 0;
 function showToast(text){
   const el = $('toastMsg');
   el.textContent = text;

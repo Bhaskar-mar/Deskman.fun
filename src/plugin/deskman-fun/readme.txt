@@ -1,10 +1,10 @@
-=== deskman.fun — Rage-Bait Platformer ===
+=== deskman.fun — Razebait Rage-Bait Platformer ===
 Contributors: deskmanfun
 Tags: game, html5, canvas, platformer, shortcode
 Requires at least: 5.5
 Tested up to: 6.6
 Requires PHP: 7.2
-Stable tag: 1.2.0
+Stable tag: 1.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -12,8 +12,8 @@ Embed the deskman.fun stickman rage-bait platformer on any post or page with a s
 
 == Description ==
 
-deskman.fun is a minimalist 2D rage-bait platformer: a procedurally-animated stickman, physics-based momentum,
-moving/disappearing platforms, and levels designed to teach a lesson, break it, and teach it again. Everything
+Razebait is a minimalist 2D rage-bait platformer: a procedurally-animated stickman, physics-based momentum,
+moving/disappearing platforms, hidden traps, and five short levels designed to teach a lesson, break it, and teach it again. Everything
 runs client-side on HTML5 Canvas — no external API calls, no server requirement beyond serving the files, and
 progress/settings are saved in the player's browser (localStorage).
 
@@ -36,8 +36,10 @@ Custom width for the inline box:
 
 = Notes =
 
-* Use the shortcode once per page. The game's internal element IDs are fixed, so two instances on the same
-  page will collide with each other.
+* Use the shortcode once per page. Only the first instance renders; later ones output an HTML comment.
+* `max_width` accepts a single CSS length (e.g. `960px`, `80%`, `60rem`, `90vw`). Other values fall back to `960px`.
+* When embedded inline, the game only captures the keyboard after a visitor clicks it, and never inside form fields,
+  so the rest of the page (scrolling, comment forms) keeps working.
 * All five levels, sound (synthesized, no audio files), music, haptics (on supporting mobile devices), and
   save data work identically to the standalone version.
 * Sound and vibration require a user gesture to start (a browser requirement, not a bug) — the Play button
@@ -70,9 +72,25 @@ Yes — use the Shortcode block and paste `[deskman_game]` (or `[deskman_game fu
 = Does it work on mobile? =
 
 Yes. Touch controls (left / right / jump) appear automatically on touch devices and stay hidden on devices
-with a mouse, so desktop and mobile both get the right control scheme without any configuration.
+with a mouse. In portrait the controls sit in their own band below the play area so they never cover the game;
+in landscape they are translucent and the camera keeps the start and exit clear of them.
 
 == Changelog ==
+
+= 1.3.0 =
+* Five redesigned levels (Trust, Disappearing Floor, Hidden, Don't Stop, Trust Nothing) with checkpoints, a chasing
+  wall, crushers, hidden spikes and deceptive exits. Every level is verified completable by automated play-throughs.
+* Physics: fixed 120 Hz simulation (identical at any refresh rate), no more falling through rising platforms or
+  getting stuck in geometry, variable jump height, crush detection.
+* Instant retries: auto-respawn after 0.6 s (skip with Jump or a tap) instead of a "press any key" prompt.
+* Inline embeds now work: the game no longer locks page scrolling, takes over the viewport, or swallows keys typed
+  into forms. All CSS is scoped to the game.
+* Mobile: bigger view in portrait with a dedicated control band, slide-between d-pad, multi-touch jump, safe-area
+  support, fullscreen button for inline embeds.
+* Level select and settings now open correctly from the start screen (they previously rendered behind it).
+* Fullscreen game sits below the admin bar for logged-in users.
+* Security: `max_width` is validated as a single CSS length.
+* Existing player progress (browser save) is kept; progress is never lowered.
 
 = 1.2.0 =
 * Activation now sets the new "/play" page as the site's homepage automatically (only if the site doesn't already
