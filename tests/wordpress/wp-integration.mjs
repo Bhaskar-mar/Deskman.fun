@@ -87,7 +87,7 @@ for (const [dir, zip] of [['plugins', 'deskman-fun'], ['themes', 'deskman-fun-th
 fs.rmSync(WP + '/.maintenance', {force: true});
 await page.goto(BASE + '/wp-admin/plugins.php');
 const pluginRow = await page.textContent('tr[data-plugin="deskman-fun/deskman-fun.php"]').catch(() => '');
-check('upgrade: plugin still active after file update, shows 1.4.0', /Version 1\.4\.0/.test(pluginRow) && /Deactivate/.test(pluginRow), pluginRow.slice(0, 200));
+check('upgrade: plugin still active after file update, shows 1.5.0', /Version 1\.5\.0/.test(pluginRow) && /Deactivate/.test(pluginRow), pluginRow.slice(0, 200));
 const st2 = JSON.parse(wp('state'));
 check('upgrade: setup options untouched (no duplicate Play page, front page kept)', st2.page_on_front === st1.page_on_front && st2.play_plugin === st1.play_plugin && st2.play_theme === st1.play_theme, {st1, st2});
 
@@ -95,8 +95,8 @@ check('upgrade: setup options untouched (no duplicate Play page, front page kept
 await page.goto(BASE + '/');
 await page.waitForTimeout(400);
 const a3 = await gameAssets();
-check('theme+plugin: front page runs v1.4.0 exactly once', a3.version === '1.4.0' && a3.roots === 1 && a3.js.length === 1 && a3.css.length === 1, a3);
-check('theme+plugin: plugin copy of assets wins the shared handle', a3.js[0] && a3.js[0].includes('/plugins/deskman-fun/') && a3.js[0].includes('ver=1.4.0'), a3.js);
+check('theme+plugin: front page runs v1.5.0 exactly once', a3.version === '1.5.0' && a3.roots === 1 && a3.js.length === 1 && a3.css.length === 1, a3);
+check('theme+plugin: plugin copy of assets wins the shared handle', a3.js[0] && a3.js[0].includes('/plugins/deskman-fun/') && a3.js[0].includes('ver=1.5.0'), a3.js);
 const titles = await page.evaluate(() => document.querySelectorAll('head title').length);
 check('theme template: exactly one <title>', titles === 1, titles);
 await page.click('#btnLevelSelectStart');
@@ -146,7 +146,7 @@ console.log('switch theme:', wp('switch-theme', 'twentytwentyfour'));
 await page.goto(BASE + '/');
 await page.waitForTimeout(300);
 const a4 = await gameAssets();
-check('plugin only (Twenty Twenty-Four): Play page runs the game', a4.version === '1.4.0' && a4.roots === 1, a4);
+check('plugin only (Twenty Twenty-Four): Play page runs the game', a4.version === '1.5.0' && a4.roots === 1, a4);
 await page.screenshot({path: SHOTS + '/wp-plugin-only-tt4.png'});
 await page.goto(BASE + '/embed-test/');
 await page.waitForTimeout(300);
@@ -160,7 +160,7 @@ console.log('switch theme:', wp('switch-theme', 'deskman-fun-theme'));
 await page.goto(BASE + '/');
 await page.waitForTimeout(300);
 const a5 = await gameAssets();
-check('theme only: fullscreen template loads the theme copy of v1.4.0', a5.version === '1.4.0' && a5.js[0] && a5.js[0].includes('/themes/deskman-fun-theme/'), a5);
+check('theme only: fullscreen template loads the theme copy of v1.5.0', a5.version === '1.5.0' && a5.js[0] && a5.js[0].includes('/themes/deskman-fun-theme/'), a5);
 await page.goto(BASE + '/embed-test/');
 const raw = await page.textContent('.entry-content');
 check('theme only: shortcode text shows as-is when plugin is off (expected WP behaviour)', raw.includes('[deskman_game]'));
