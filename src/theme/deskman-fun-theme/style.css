@@ -1,0 +1,77 @@
+/*
+Theme Name: deskman.fun
+Theme URI: https://deskman.fun
+Author: deskman.fun
+Author URI: https://deskman.fun
+Description: Minimal WordPress theme built to host the deskman.fun rage-bait platformer. Includes a fullscreen "Game" page template; regular pages/posts get a clean cream/black/red layout matching the game's visual identity. On activation, automatically creates a ready-to-play "/play" page and tidies up WordPress's default sample content.
+Version: 1.2.0
+Requires at least: 5.5
+Requires PHP: 7.2
+License: GPL v2 or later
+License URI: https://www.gnu.org/licenses/gpl-2.0.html
+Text Domain: deskman-fun-theme
+*/
+
+:root{
+  --cream:#efe9dc;
+  --cream-2:#e5decd;
+  --ink:#1a1a1a;
+  --ink-soft:#2b2b2b;
+  --red:#e0323c;
+  --red-dark:#b91c26;
+  --white:#fffdf8;
+}
+
+*{box-sizing:border-box;}
+
+body{
+  margin:0;
+  background:var(--cream);
+  color:var(--ink);
+  font-family:'Inter',system-ui,-apple-system,sans-serif;
+  line-height:1.6;
+}
+
+a{ color:var(--red); text-decoration:none; }
+a:hover{ text-decoration:underline; }
+
+/* The fullscreen Game page template renders edge-to-edge with no
+   theme chrome; prevent the host body from scrolling behind it. */
+body.dgm-fullscreen-page{
+  margin:0; padding:0; overflow:hidden; height:100%;
+  background:#1a1a1a;
+}
+html:has(body.dgm-fullscreen-page){ height:100%; overflow:hidden; }
+
+.site-header{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:18px 24px; background:var(--white); border-bottom:2px solid var(--ink);
+}
+.site-header .brand{
+  font-family:'Archivo Black',sans-serif; font-size:20px; color:var(--ink); letter-spacing:.5px;
+}
+.site-header .brand span{ color:var(--red); }
+.site-header nav a{
+  margin-left:18px; color:var(--ink); font-weight:700; font-size:14px; text-transform:uppercase; letter-spacing:.5px;
+}
+.site-header nav a:hover{ color:var(--red); text-decoration:none; }
+
+.site-content{
+  max-width:860px; margin:0 auto; padding:48px 24px; min-height:50vh;
+}
+.site-content h1{ font-family:'Archivo Black',sans-serif; font-size:32px; margin-top:0; }
+.site-content article{ margin-bottom:48px; }
+.site-content article h2 a{ color:var(--ink); }
+.site-content .entry-meta{ font-size:12px; color:#888; text-transform:uppercase; letter-spacing:.5px; }
+
+.site-footer{
+  text-align:center; padding:28px; font-size:12px; color:#888;
+  background:var(--white); border-top:2px solid var(--ink);
+}
+
+.play-cta{
+  display:inline-block; margin-top:18px; padding:12px 24px; border-radius:12px;
+  background:var(--red); color:#fff; font-weight:800; font-size:14px;
+  box-shadow:0 4px 0 var(--red-dark);
+}
+.play-cta:hover{ text-decoration:none; opacity:.92; }
