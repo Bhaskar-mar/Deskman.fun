@@ -9,7 +9,7 @@ const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
 // Plan actions (see runPlan below):
 //   {hold:'right'} {release:'right'} {jumpAt:X} {jumpWhen:'expr'} {until:'expr'} {moveTo:X}
 // Expressions see: p (player), H (hazards), P (platforms), g (goal), ls.
-const PLANS = {
+export const PLANS = {
   1: [
     {hold:'right'},
     {jumpAt:466}, {jumpAt:800}, {jumpAt:1080}, {jumpAt:1800},
@@ -116,8 +116,8 @@ async function runPlan(page, levelIndex, plan, opts = {}) {
     const D = window.Razebait.debug;
     D.setLoopPaused(true);
     ['left', 'right', 'jump'].forEach(k => D.press(k, false)); // no keys carried over from a previous run
-    D.start(levelIndex);
-    if (startCheckpoint) { /* not used */ }
+    if (startCheckpoint != null && startCheckpoint >= 0) D.startAt(levelIndex, startCheckpoint);
+    else D.start(levelIndex);
     const STEP = D.consts.STEP;
     const ctxFn = (expr) => new Function('p','H','P','g','ls', 'return (' + expr + ');');
     let i = 0, t = 0, jumpRelease = -1;

@@ -18,8 +18,8 @@ A short, surprise-driven stickman platformer (30 levels, easy → devil) deliver
 
 ```bash
 ./tools/build.sh
-# → dist/deskman-fun-1.5.0.zip
-# → dist/deskman-fun-theme-1.5.0.zip
+# → dist/deskman-fun-1.6.0.zip
+# → dist/deskman-fun-theme-1.6.0.zip
 ```
 
 The script needs only `bash`, `zip` and `sed`. Each ZIP contains a single top-level folder (`deskman-fun/` and `deskman-fun-theme/`), which is the layout WordPress expects for uploads. `dist/` is git-ignored.
@@ -28,9 +28,9 @@ The script needs only `bash`, `zip` and `sed`. Each ZIP contains a single top-le
 
 Back up the site (files and database) first. Then:
 
-1. **Plugin.** Go to *Plugins → Add New → Upload Plugin* and choose `deskman-fun-1.5.0.zip`. WordPress offers *Replace current with uploaded*; accept it.
-2. **Theme** (if you use it). Go to *Appearance → Themes → Add New → Upload Theme* and choose `deskman-fun-theme-1.5.0.zip`, then *Replace current with uploaded*.
-3. Hard-refresh the Play page. Assets are versioned `?ver=1.5.0`, so browser and CDN caches pick up the new files. If you run a page-cache plugin, purge it once.
+1. **Plugin.** Go to *Plugins → Add New → Upload Plugin* and choose `deskman-fun-1.6.0.zip`. WordPress offers *Replace current with uploaded*; accept it.
+2. **Theme** (if you use it). Go to *Appearance → Themes → Add New → Upload Theme* and choose `deskman-fun-theme-1.6.0.zip`, then *Replace current with uploaded*.
+3. Hard-refresh the Play page. Assets are versioned `?ver=1.6.0`, so browser and CDN caches pick up the new files. If you run a page-cache plugin, purge it once.
 
 Upgrade notes:
 * Nothing in the database needs migrating. Activation and self-heal logic is unchanged and does not run again on update. The `/play` page and front-page setting are left as they are.
@@ -46,7 +46,7 @@ Rollback: upload the original `deskman-fun.zip` / `deskman-fun-theme.zip` from t
 
 ```bash
 ./tools/build.sh                  # always rebuild before testing
-node tests/run-all.mjs            # play-throughs, traps, physics, browser integration (140 checks)
+node tests/run-all.mjs            # play-throughs, traps, physics, browser integration (141 checks)
 npx eslint src/game               # lint (config in eslint.config.mjs)
 ```
 

@@ -11,7 +11,7 @@ if(!root || root.getAttribute('data-dgm-init')) return;
 root.setAttribute('data-dgm-init','1');
 
 const $ = (id)=>document.getElementById(id);
-const GAME_VERSION = '1.5.0';
+const GAME_VERSION = '1.6.0';
 const DEBUG = window.RAZEBAIT_DEBUG === true;
 
 /* =========================================================================
@@ -477,7 +477,7 @@ function buildLevel(def){
   P(ground(0, 400)); c = 400;
   def.segments.forEach((spec, n)=>{
     const a = spec.split(':'), kind = a[0], v = parseFloat(a[1]);
-    if(!def.chase && n > 0 && n % 3 === 0) checkpoints.push({x:c + 80, y:G});
+    if(!def.chase && n > 0 && n % 3 === 0) checkpoints.push({x:c + 80, y:G, routeIndex:route.length});
     switch(kind){
       case 'gap':
         P(ground(c, 300)); route.push({jumpAt:c + 260}); c += 300 + v; break;
@@ -711,6 +711,19 @@ function makeLevelState(data){
   const triggers = (data.triggers || []).map(t=>Object.assign(cloneRect(t), {fired:false}));
   const goal = Object.assign(cloneRect(data.goal), {moving:null, fakeLeft:data.goal.fakeCount || 0, cooldown:0});
   const cp = checkpointIndex >= 0 && data.checkpoints ? data.checkpoints[checkpointIndex] : null;
+  if(cp){
+    // Respawning at a checkpoint: traps triggered behind it have already
+    // sprung on the way here. One-shot rushers rest at the end of their run
+    // and those triggers cannot fire again.
+    for(const tr of triggers){
+      if(tr.x + tr.w > cp.x - 20) continue;
+      tr.fired = true;
+      for(const a of (tr.actions || [])){
+        const h = a.do === 'start' ? hazards[a.hazard] : null;
+        if(h && h.path && h.path.once){ h.idle = false; h.done = true; h.cx = h.path.x2; h.cy = h.path.y2; }
+      }
+    }
+  }
   const sx = cp ? cp.x - PLAYER_W/2 : data.spawn.x;
   const sy = cp ? cp.y - PLAYER_H : data.spawn.y;
   return {
@@ -735,6 +748,15 @@ function loadLevel(index){
   spawnLevel(true);
   updateHud();
   showLevelToast(LEVELS[currentLevelIndex]);
+  maybeRotateHint();
+}
+
+// Phones held upright see a narrower world; suggest landscape once per session.
+let rotateHintShown = false;
+function maybeRotateHint(){
+  if(rotateHintShown || !touchUI || view.band <= 1) return;
+  rotateHintShown = true;
+  setTimeout(()=>{ if(gameState === 'playing' && view.band > 1) showToast('Tip: turn your phone sideways for a bigger view'); }, 1700);
 }
 
 function spawnLevel(snapCamera){
@@ -2245,6 +2267,7 @@ if(DEBUG){
     LEVELS, keys, consts:{STEP, MOVE_SPEED, JUMP_VELOCITY, GRAVITY, PLAYER_W, PLAYER_H},
     setLoopPaused(v){ loopPaused = !!v; },
     start(i){ $('startScreen').hidden = true; pointerActive = true; loadLevel(i); },
+    startAt(i, cp){ $('startScreen').hidden = true; pointerActive = true; loadLevel(i); checkpointIndex = cp; spawnLevel(true); },
     step(n){ for(let i=0;i<(n||1);i++) simStep(STEP); },
     frame(ms){ advanceFrame((lastFrame || performance.now()) + ms); },
     press(k, v){ if(k === 'jump' && v && !keys.jump) jumpPressedAt = simTime; keys[k] = v; },

@@ -4,7 +4,7 @@ Tags: game, html5, canvas, platformer, shortcode
 Requires at least: 5.5
 Tested up to: 6.6
 Requires PHP: 7.2
-Stable tag: 1.5.0
+Stable tag: 1.6.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -76,6 +76,15 @@ with a mouse. In portrait the controls sit in their own band below the play area
 in landscape they are translucent and the camera keeps the start and exit clear of them.
 
 == Changelog ==
+
+= 1.6.0 =
+* Fix: respawning at a checkpoint no longer leaves traps behind you un-sprung (in level 8 a rushing spike could
+  wait, unfired, exactly where you have to stand). Every checkpoint in all 30 levels is now verified to lead to a
+  completable run.
+* Fix: a player squeezed between a ground edge and a returning moving platform is lifted onto the surface instead
+  of being left slightly inside the ground.
+* Level Select opens scrolled to your current level.
+* Phones held upright get a one-time tip to turn sideways for a bigger view.
 
 = 1.5.0 =
 * 22 new levels: 30 in total, ordered by measured difficulty, across seven tiers (Easy, Medium, Hard, Brutal,

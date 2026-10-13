@@ -7,6 +7,7 @@ import path from 'node:path';
 import { playthroughs } from './playthrough.mjs';
 import { traps } from './traps.mjs';
 import { physics } from './physics.mjs';
+import { checkpoints } from './checkpoints.mjs';
 import { integration, serve } from './integration.mjs';
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 
@@ -24,6 +25,10 @@ for (const [id, r] of Object.entries(pt)) line(r.completed && r.naiveHoldRightDi
 
 console.log('\n== Traps fire as designed ==');
 for (const t of await traps(page)) line(t.ok, `L${t.level}: ${t.trap} → ${t.death ? t.death.reason + ' @x=' + t.death.x : 'no death'}`);
+
+console.log('\n== Every checkpoint leads to a completable run ==');
+const cpr = await checkpoints(page);
+line(cpr.every(r => r.ok), `${cpr.filter(r => r.ok).length}/${cpr.length} checkpoint respawns completed` + cpr.filter(r => !r.ok).map(r => ` FAIL L${r.level}#${r.cp + 1}`).join(''));
 
 console.log('\n== Physics ==');
 const ph = await physics(page);
