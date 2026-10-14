@@ -11,7 +11,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DESKMAN_FUN_DB_VERSION', '1' );
+define( 'DESKMAN_FUN_DB_VERSION', '2' );
+// Leaderboard season: bumped when level layouts change, so times set on old
+// maps are kept in the table but no longer ranked against new runs.
+define( 'DESKMAN_FUN_SCORE_SEASON', 2 );
 define( 'DESKMAN_FUN_TERMS_VERSION', '2026-10' );
 define( 'DESKMAN_FUN_LEVEL_COUNT', 30 );
 
@@ -50,9 +53,11 @@ function deskman_fun_install_db() {
 			best_deaths int(10) unsigned NOT NULL DEFAULT 0,
 			clears int(10) unsigned NOT NULL DEFAULT 1,
 			updated_at datetime NOT NULL,
+			season smallint(5) unsigned NOT NULL DEFAULT 1,
 			PRIMARY KEY  (id),
 			UNIQUE KEY user_level (user_id,level_id),
-			KEY level_time (level_id,best_time_ms)
+			KEY level_time (level_id,best_time_ms),
+			KEY season_level_time (season,level_id,best_time_ms)
 		) {$charset};"
 	);
 	update_option( 'deskman_fun_db_version', DESKMAN_FUN_DB_VERSION );
@@ -525,10 +530,26 @@ function deskman_fun_rest_score( WP_REST_Request $req ) {
 	}
 	global $wpdb;
 	$table = deskman_fun_scores_table();
-	$row   = $wpdb->get_row( $wpdb->prepare( "SELECT id, best_time_ms, best_deaths, clears FROM {$table} WHERE user_id = %d AND level_id = %d", $uid, $level ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery
+	$row   = $wpdb->get_row( $wpdb->prepare( "SELECT id, best_time_ms, best_deaths, clears, season FROM {$table} WHERE user_id = %d AND level_id = %d", $uid, $level ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery
 	$now   = current_time( 'mysql', true );
 	$best  = false;
-	if ( $row ) {
+	if ( $row && (int) $row->season !== DESKMAN_FUN_SCORE_SEASON ) {
+		// First clear of the redesigned level: the old-map time is replaced.
+		$best = true;
+		$wpdb->update( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$table,
+			array(
+				'best_time_ms' => $time,
+				'best_deaths'  => $deaths,
+				'clears'       => 1,
+				'updated_at'   => $now,
+				'season'       => DESKMAN_FUN_SCORE_SEASON,
+			),
+			array( 'id' => (int) $row->id ),
+			array( '%d', '%d', '%d', '%s', '%d' ),
+			array( '%d' )
+		);
+	} elseif ( $row ) {
 		$best = $time < (int) $row->best_time_ms;
 		$wpdb->update( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 			$table,
@@ -553,8 +574,9 @@ function deskman_fun_rest_score( WP_REST_Request $req ) {
 				'best_deaths'  => $deaths,
 				'clears'       => 1,
 				'updated_at'   => $now,
+				'season'       => DESKMAN_FUN_SCORE_SEASON,
 			),
-			array( '%d', '%d', '%d', '%d', '%d', '%s' )
+			array( '%d', '%d', '%d', '%d', '%d', '%s', '%d' )
 		);
 	}
 	return rest_ensure_response( array( 'accepted' => true, 'personalBest' => $best ) );
@@ -566,9 +588,9 @@ function deskman_fun_leaderboard_data( $level = 0, $limit = 50 ) {
 	$table = deskman_fun_scores_table();
 	$limit = max( 1, min( 100, (int) $limit ) );
 	if ( $level ) {
-		$rows = $wpdb->get_results( $wpdb->prepare( "SELECT s.user_id, u.display_name AS name, s.best_time_ms AS time_ms, s.best_deaths AS deaths FROM {$table} s INNER JOIN {$wpdb->users} u ON u.ID = s.user_id WHERE s.level_id = %d ORDER BY s.best_time_ms ASC, s.updated_at ASC LIMIT %d", $level, $limit ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery
+		$rows = $wpdb->get_results( $wpdb->prepare( "SELECT s.user_id, u.display_name AS name, s.best_time_ms AS time_ms, s.best_deaths AS deaths FROM {$table} s INNER JOIN {$wpdb->users} u ON u.ID = s.user_id WHERE s.season = %d AND s.level_id = %d ORDER BY s.best_time_ms ASC, s.updated_at ASC LIMIT %d", DESKMAN_FUN_SCORE_SEASON, $level, $limit ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery
 	} else {
-		$rows = $wpdb->get_results( $wpdb->prepare( "SELECT s.user_id, u.display_name AS name, COUNT(*) AS cleared, SUM(s.best_time_ms) AS time_ms FROM {$table} s INNER JOIN {$wpdb->users} u ON u.ID = s.user_id GROUP BY s.user_id, u.display_name ORDER BY cleared DESC, time_ms ASC LIMIT %d", $limit ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery
+		$rows = $wpdb->get_results( $wpdb->prepare( "SELECT s.user_id, u.display_name AS name, COUNT(*) AS cleared, SUM(s.best_time_ms) AS time_ms FROM {$table} s INNER JOIN {$wpdb->users} u ON u.ID = s.user_id WHERE s.season = %d GROUP BY s.user_id, u.display_name ORDER BY cleared DESC, time_ms ASC LIMIT %d", DESKMAN_FUN_SCORE_SEASON, $limit ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery
 	}
 	$out  = array();
 	$rank = 0;

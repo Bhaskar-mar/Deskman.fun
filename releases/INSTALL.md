@@ -1,18 +1,20 @@
-# deskman.fun 2.0.1: install guide
+# deskman.fun 2.1.0: install guide
 
 Two files, both for WordPress 5.5+ and PHP 7.2+:
 
 | File | What it is |
 |---|---|
-| `deskman-fun-2.0.1.zip` | **Plugin**. The game, accounts, leaderboard, and the `[deskman_game]` / `[deskman_leaderboard]` shortcodes. |
-| `deskman-fun-theme-2.0.1.zip` | **Theme**. The matching site design (header, footer, pages) and a fullscreen "Game" page template. Optional, but recommended for a uniform look. |
+| `deskman-fun-2.1.0.zip` | **Plugin**. The game, accounts, leaderboard, and the `[deskman_game]` / `[deskman_leaderboard]` shortcodes. |
+| `deskman-fun-theme-2.1.0.zip` | **Theme**. The matching site design (header, footer, pages) and a fullscreen "Game" page template. Optional, but recommended for a uniform look. |
 
 ## Upgrading an existing site (you have 1.x installed)
 
 1. **Back up** the site (files and database).
-2. **Plugin:** *Plugins → Add New → Upload Plugin*, choose `deskman-fun-2.0.1.zip`, *Install Now*, then **Replace current with uploaded**.
-3. **Theme:** *Appearance → Themes → Add New → Upload Theme*, choose `deskman-fun-theme-2.0.1.zip`, then **Replace current with uploaded**.
+2. **Plugin:** *Plugins → Add New → Upload Plugin*, choose `deskman-fun-2.1.0.zip`, *Install Now*, then **Replace current with uploaded**.
+3. **Theme:** *Appearance → Themes → Add New → Upload Theme*, choose `deskman-fun-theme-2.1.0.zip`, then **Replace current with uploaded**.
 4. Purge any page cache or CDN once, then hard-refresh the Play page (Ctrl+F5 / Cmd+Shift+R). The start screen shows **deskman.fun**.
+
+**Upgrading from 2.0.x:** every level layout changed in 2.1, so the leaderboard starts a new season. Old times stay in the database but are no longer ranked. Each player's first clear of a level on the new layout replaces their old time for that level. Unlocked levels and progress are not affected.
 
 On the next page load the plugin creates its scores table and three pages: **Terms of Service** (`/terms`), **Privacy Policy** (`/privacy`, or your existing published privacy page) and **Leaderboard** (`/leaderboard`). Pages that already exist are never overwritten. Players keep their progress.
 

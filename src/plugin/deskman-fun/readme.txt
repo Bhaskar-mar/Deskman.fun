@@ -4,7 +4,7 @@ Tags: game, html5, canvas, platformer, shortcode
 Requires at least: 5.5
 Tested up to: 6.6
 Requires PHP: 7.2
-Stable tag: 2.0.1
+Stable tag: 2.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -88,6 +88,17 @@ with a mouse. In portrait the controls sit in their own band below the play area
 in landscape they are translucent and the camera keeps the start and exit clear of them.
 
 == Changelog ==
+
+= 2.1.0 =
+* Levels 1-10 rebuilt and much harder. Levels 1-5 teach one or two ideas each, then use them against you; levels 6-10
+  bring in the nastier tricks. Every level opens with a card naming what is new in it.
+* Hints: die twice at the same obstacle and a hint explains how to beat it.
+* New tricks: trapdoors, spikes that fall from the sky, spikes that jump when you jump, walls that shoot up out of
+  the floor, and an exit door that runs away. Levels 11-30 use them too, and were re-ordered so every level is
+  harder than the one before (measured by the test bot).
+* Leaderboard: times set on the old level layouts are kept in the database but no longer ranked. A player's first
+  clear on a new layout replaces their old time for that level. Personal best times in the browser are archived
+  the same way; unlocks and completed levels are untouched.
 
 = 2.0.1 =
 * New start screen: illustrated background (mountains, spikes, saw, goal flag), bolder logo, larger running

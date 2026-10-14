@@ -6,71 +6,97 @@ Physics reference:
 * A flat jump at full speed covers about 290 units horizontally.
 * Ground tops are at y=680 in a 900-unit-tall world.
 
-Difficulty is measured, not guessed. `difficulty()` in `tests/playthrough.mjs` replays every level's winning route:
-* **Jump precision:** for each timed jump, sweep the take-off point and measure how wide the window is that still clears the level; add 100/width.
-* **Crumbling tiles:** 1 per stretch, plus 10 / (hesitation slack in units).
-* **Chasing wall:** 3 + (wall speed − 340) / 5.
-* **Reactive hazards:** fixed weights for rushers (by speed), saws (by speed), crushers, hidden spikes, rides, invisible floors and fake exits.
+## How the game teaches, then betrays
 
-Levels 9–30 are ordered by this composite score, so each is harder than the one before (2.0.0: 11.9 for level 9 up to 40.0 for level 30; level 8 scores 10.5). Levels 1–8 keep the hand-tuned order from 1.4.0. The 2.0.0 tricks add weight too: reversed controls +1.5, plus the reactive weight of each new trap. The wall-chase levels 4 and 7 score above their neighbours because of the chase weight.
+* **Levels 1–5 teach.** Each one introduces one or two ideas. A card names them when the level starts ("NEW: CRUMBLING FLOOR — Cracks red, then drops. Never stop on it."). Then the level uses them against you.
+* **Levels 6–10 introduce the nasty stuff**: sliding floors, rushing spikes, low and dropping ceilings, trapdoors, sky spikes, reversed controls, jumping spikes, invisible and fake floors, rising walls. Each is named on its level's card.
+* **Levels 11–30 mix everything**, each a little harder than the last.
+* **Hints:** die twice at the same obstacle and a HINT box explains how to beat that obstacle. It stays until you get past it. Every obstacle type has a hint (`SEG_HINTS` in `src/game/deskman-game.js`). A level can override one with `hints:{kind:'text'}`.
 
-Every level is checked by `tests/playthrough.mjs`: a scripted run must complete it, and a naive "hold right" run must die. `tests/traps.mjs` checks that each signature trap kills at its designed spot.
+## Every trick
 
-| # | Name | Teaches | Signature surprise | How to beat it once you know |
-|---|---|---|---|---|
-| 1 | TRUST | Run, jump a pit, jump a spike, step up a ledge | When you approach, the EXIT hops away, and spikes pop up where it stood | Jump the spikes and follow the door |
-| 2 | Disappearing Floor | Platforms crack and fall after you step on them; ride a moving platform | The last stretch of "solid" floor collapses almost instantly | Keep moving over the tiles, then jump the last stretch |
-| 3 | HIDDEN | Hidden spikes, a patrolling saw, an invisible bridge, a checkpoint | A hanging crusher drops fast if you dash under it. The exit bounces you back once ("The door disagrees.") | Trigger the crusher, step back, then climb over it once it lands (it becomes solid). Walk into the door twice |
-| 4 | DON'T STOP | Collapsing tiles under pressure, a vertical saw | A red sawtooth wall chases you through the whole level | Never stop. Run under the saw while it is up, or jump it while it is down |
-| 5 | TRUST NOTHING | Everything above, plus a checkpoint | The floor under the visible exit collapses and the door leaps up to a far ledge. Then the tile just before the real exit drops out | Jump early over the collapsing floor, climb the ledge, and jump straight into the door |
-| 6 | SLIDE (hard) | Short "tap" jumps, reading moving threats | The floor ahead slides away when you approach; a spike rushes at you; a low ceiling lined with spikes kills a full jump over the floor spike beneath it; a narrow crusher | Jump the gap the slide opens, hop over the rusher, *tap* jump under the ceiling, let the crusher fall then climb it |
-| 7 | PANIC (brutal) | Everything under pressure | A faster wall chases you while 100-wide tiles crumble, the floor drops out of the world, a spike rushes at you and a ceiling corridor demands a tap jump; the exit bounces you back once | Never stop; jump the dropped floor from its edge; tap under the ceiling; walk into the door twice |
-| 8 | THE DEVIL (impossible) | Every mechanic, two checkpoints | Hidden spike, sliding floor, rushing spike, a moving platform under ceiling spikes, a crusher, crumbling tiles, a saw, an invisible bridge, a collapsing floor under the first exit that forces a long leap onto a 90-wide strip, and a spike that pops up on the final ledge right before the real exit | Learn each section, then chain them: the last two jumps must be taken the moment you land |
-
-## Levels 9–30
-
-2.0.0 rebuilt these levels around Level-Devil-style tricks, layered so each level reuses earlier ones and adds one more:
-
-| Trick | What happens | How to read it |
+| Segment | What happens | How to beat it |
 |---|---|---|
-| `ambush` | A spike rises out of the landing while you are in the air | Jump long: the safe spot is past where the spike appears |
-| `crumble` | A pillar you land on drops out from under you | Land and jump again at once |
-| `popup` | Three hidden spikes appear in a row on flat ground | Walk slowly the first time; hop each one after |
-| `reverse` | A banner flashes and left/right swap until the next banner | Watch for the banner; the stickman still faces the way he moves |
-| `dropceiling` | A spiked ceiling lowers when you get close, then slides along | Short tap jumps only, keep moving |
-| `stalactites` | Ceiling spikes shake briefly, then fall | Pass them during the shake, never stop under one |
-| `fake` / `collapse` exit | The door is a lie, or the floor in front of it falls | Walk into the door twice / jump the last stretch |
+| `spikes:N` | A row of N+1 spikes | Hold jump for height and distance |
+| `gap:W` | A pit W wide | Jump from the edge |
+| `step` | A ledge | Jump up |
+| `tiles:K:W:ms` | K floor tiles crack and fall after you step on them | Never stop on them |
+| `crumble:W:I` | A narrow pillar that falls the instant you land | Jump again immediately |
+| `island:W:I` | A narrow pillar between two pits | Land and leave at once |
+| `hidden` | A spike rises from the floor as you approach | Jump just before it |
+| `popup` | Three hidden spikes rise one after another | Hop, hop, hop |
+| `ambush:W` | A spike rises where a normal jump would land | Jump from the very edge, then hop it |
+| `saw:SPEED` / `vsaw` | Patrolling saw (horizontal / vertical) | Go when it turns away / run under it while it is up |
+| `crusher` | A block slams down when you get close | Stop, let it land, then climb it |
+| `stalactites:N` | Ceiling blocks fall as you pass under them | Never slow down |
+| `slide:W` | The floor ahead slides away as you reach it | Jump right at the edge |
+| `rusher:SPEED` | A spike charges at you along the floor | Jump it when it is close |
+| `ceiling` / `dropceiling` | Spiked ceiling (that drops as you enter) | Tap jump only |
+| `moving:W[:ceil]` | A moving platform, optionally under a spiked ceiling | Step on, stand still |
+| `reverse:L` | Left and right swap inside a red zone | Press ← to go forward |
+| `invisible:W` | A floor you cannot see | Walk on it |
+| `fake` | A floor that falls almost at once | Jump over it |
+| **`trapdoor:W`** (2.1) | Ordinary-looking floor drops out of the world as you arrive | Jump before it |
+| **`skyspike`** (2.1) | A spike falls out of the sky onto where a runner will be | Stop when it starts falling, then jump it |
+| **`leaper`** (2.1) | A floor spike leaps up into your jump | Do not jump: run under it |
+| **`riser`** (2.1) | A wall shoots up out of the floor | Jump it as it rises |
+| exit `fake` | The door pushes you back once | Walk in again |
+| exit `collapse` | The floor under the door falls and the door runs to a ledge | Jump early, climb, jump into the door |
+| **exit `runaway`** (2.1) | The door hops away twice, leaving a spike where it stood | Follow it and jump the spikes |
 
-These are built from obstacle segments by `buildLevel()` in `src/game/deskman-game.js`. Each segment carries its own solution, and `tests/playthrough.mjs` uses it to prove the level beatable. Checkpoints sit every third segment, except in chase levels.
-
-| # | Name | Tier | Segments | Obstacles | Chase | Exit |
-|---|---|---|---|---|---|---|
-| 9 | CRUMBLE | BRUTAL | 10 | tiles, crumble, gap, island, fake, ambush | — | plain |
-| 10 | RIDE | BRUTAL | 9 | moving, island, rusher, dropceiling, crumble, ambush, gap | — | collapse |
-| 11 | SAW MILL | BRUTAL | 10 | saw, crumble, vsaw, stalactites, ambush, island, popup, gap | — | fake |
-| 12 | LEAP OF FAITH | BRUTAL | 11 | gap, island, ambush, spikes, popup, crumble, step | — | plain |
-| 13 | RUSH HOUR | BRUTAL | 10 | rusher, island, ambush, popup, crumble, spikes, gap | — | fake |
-| 14 | GHOST FLOOR | INSANE | 11 | invisible, ambush, slide, island, popup, fake, crumble, hidden, reverse, gap | — | collapse |
-| 15 | SLIP | INSANE | 10 | slide, popup, crumble, reverse, ambush, island, tiles | — | fake |
-| 16 | LOW CEILING | INSANE | 10 | ceiling, dropceiling, island, reverse, rusher, crumble, gap | — | fake |
-| 17 | DESCENT | INSANE | 11 | rusher, crumble, moving, dropceiling, slide, vsaw, ambush, reverse, tiles, island, gap | — | collapse |
-| 18 | BLIND FAITH | INSANE | 13 | ambush, invisible, slide, popup, fake, crumble, hidden, reverse, island, gap | — | collapse |
-| 19 | MIXED SIGNALS | INSANE | 11 | reverse, slide, dropceiling, saw, ambush, fake, crumble, stalactites, tiles, popup, gap | — | collapse |
-| 20 | QUICKSAND | INSANE | 12 | tiles, slide, crumble, fake, reverse, ambush, popup, gap | — | collapse |
-| 21 | CRUSHER ROW | IMPOSSIBLE | 11 | crusher, stalactites, crumble, ambush, tiles, reverse, popup, gap | — | collapse |
-| 22 | CHASE | IMPOSSIBLE | 9 | gap, popup, tiles, island, ambush, stalactites, crumble, hidden | wall 360 | plain |
-| 23 | GRINDER | IMPOSSIBLE | 13 | saw, crumble, crusher, vsaw, stalactites, ambush, reverse, island, dropceiling, gap | — | collapse |
-| 24 | GAUNTLET | IMPOSSIBLE | 13 | slide, crumble, rusher, moving, crusher, dropceiling, reverse, saw, tiles, ambush, island, popup, gap | — | collapse |
-| 25 | NEEDLE | IMPOSSIBLE | 12 | dropceiling, spikes, ceiling, popup, crumble, ambush, reverse, island, fake | — | collapse |
-| 26 | NO MERCY | IMPOSSIBLE | 15 | fake, dropceiling, crumble, vsaw, slide, rusher, reverse, moving, tiles, crusher, ambush, island, stalactites, popup, gap | — | collapse |
-| 27 | STAMPEDE | IMPOSSIBLE | 10 | rusher, crumble, dropceiling, tiles, ambush, stalactites, island, gap | wall 365 | collapse |
-| 28 | FLIGHT | IMPOSSIBLE | 11 | tiles, dropceiling, crumble, rusher, ambush, ceiling, slide, island, stalactites, gap | wall 368 | collapse |
-| 29 | LAST BREATH | IMPOSSIBLE | 13 | rusher, crumble, tiles, dropceiling, slide, ambush, island, fake, ceiling, popup, gap | wall 370 | collapse |
-| 30 | DESKMAN | DEVIL | 23 | ambush, crumble, slide, rusher, moving, crusher, dropceiling, island, reverse, saw, tiles, fake, vsaw, stalactites, popup, gap | — | collapse |
-
-Rules that hold everywhere, so traps stay fair:
+Rules that hold everywhere, so traps stay fair once you know them:
 * Red means lethal: spikes, saws, crusher teeth, the chasing wall.
-* Ink means ground. Cracked ground with red cracks is about to fall.
+* Ink means ground, unless the level told you otherwise.
 * Gold means the exit or a reached checkpoint.
 * A crusher is lethal only while falling. Once it lands it is ordinary solid ground.
 * Death respawns you in 0.6 s, or immediately on Jump or a tap. If you reached a checkpoint in this attempt, you respawn there.
+
+## Difficulty is measured, not guessed
+
+`difficulty()` in `tests/playthrough.mjs` replays every level's winning route and scores it:
+* **Jump precision:** for each timed jump, sweep the take-off point and measure how wide the window is that still clears the level; add 100/width.
+* **Crumbling tiles:** 1 per stretch, plus 10 / (hesitation slack in units).
+* **Chasing wall:** 3 + (wall speed − 340) / 5.
+* **Reactive hazards:** fixed weights for rushers (by speed), saws (by speed), crushers, hidden spikes, rides, invisible floors, fake and running exits, reversed controls (+1.5), trapdoors (+0.6), sky and jumping spikes (+0.9 each), rising walls (+0.3).
+
+The score rises at every level, from 4.96 (level 1) to 45.12 (level 30). Before 2.1, level 1 scored 2.38 and level 10 scored 11.89.
+
+Every level is built from segments by `buildLevel()` in `src/game/deskman-game.js`. Each segment carries its own winning inputs, which the tests use:
+* `tests/playthrough.mjs`: the scripted route must complete each level, and a naive "hold right" run must fail.
+* `tests/traps.mjs`: each trick, alone in a test level, must kill a player who plays it the obvious way, at the right spot.
+* `tests/checkpoints.mjs`: every checkpoint must lead to a completable run.
+
+Checkpoints sit every third segment, except in chase levels.
+
+| # | Name | Tier | Score | New in this level | Obstacles | Chase | Exit |
+|---|---|---|---|---|---|---|---|
+| 1 | FIRST STEPS | EASY | 4.96 | spikes, the exit | 5: spikes, gap, step | — | runaway |
+| 2 | CRUMBLE | EASY | 6.47 | crumbling floor | 7: tiles, gap, spikes, crumble | — | plain |
+| 3 | PEEKABOO | MEDIUM | 10.93 | hidden spikes, lying doors | 8: spikes, hidden, gap, popup, tiles, ambush | — | fake |
+| 4 | MACHINES | MEDIUM | 11.38 | saws, crushers | 10: saw, hidden, crusher, gap, vsaw, crumble, popup | — | fake |
+| 5 | RUN | HARD | 15.19 | the wall | 9: gap, tiles, spikes, island, hidden, crumble, ambush | wall 345 | plain |
+| 6 | BUTTER | HARD | 17.13 | sliding floor, rushing spikes, running door | 10: slide, rusher, tiles, crumble, ambush, popup, gap | — | collapse |
+| 7 | LOW BLOW | HARD | 18.17 | low ceilings, dropping ceiling, rides | 10: ceiling, gap, dropceiling, moving, rusher, crumble, popup | — | collapse |
+| 8 | TRAPDOOR | BRUTAL | 18.72 | trapdoors, sky spikes | 11: trapdoor, skyspike, crumble, ambush, dropceiling, rusher, popup, gap | — | fake |
+| 9 | MIRROR | BRUTAL | 20.19 | reversed controls, jumping spikes | 12: leaper, trapdoor, reverse, skyspike, crumble, ambush, tiles, dropceiling, gap | — | collapse |
+| 10 | GHOST | BRUTAL | 20.94 | invisible floor, fake floor, rising walls | 15: invisible, fake, riser, trapdoor, skyspike, leaper, reverse, crumble, ambush, stalactites, rusher, dropceiling, gap | — | collapse |
+| 11 | LEAP OF FAITH | BRUTAL | 21.28 | — | 16: gap, island, leaper, ambush, crumble, spikes, popup, skyspike, step | — | plain |
+| 12 | SAW MILL | BRUTAL | 21.49 | — | 14: saw, crumble, skyspike, vsaw, stalactites, popup, trapdoor, ambush, island, gap | — | fake |
+| 13 | RUSH HOUR | BRUTAL | 22.17 | — | 14: rusher, island, trapdoor, ambush, popup, skyspike, crumble, reverse, spikes, gap | — | fake |
+| 14 | GHOST FLOOR | INSANE | 22.71 | — | 15: invisible, ambush, popup, slide, island, leaper, trapdoor, fake, crumble, hidden, reverse, gap | — | collapse |
+| 15 | SLIP | INSANE | 23.04 | — | 14: slide, popup, skyspike, crumble, reverse, trapdoor, ambush, island, tiles | — | fake |
+| 16 | LOW CEILING | INSANE | 23.15 | — | 14: ceiling, dropceiling, leaper, island, crumble, reverse, skyspike, rusher, popup, gap | — | fake |
+| 17 | DESCENT | INSANE | 26.29 | — | 15: rusher, crumble, trapdoor, moving, dropceiling, ambush, slide, vsaw, skyspike, reverse, tiles, island, gap | — | collapse |
+| 18 | BLIND FAITH | INSANE | 26.35 | — | 17: ambush, invisible, popup, slide, leaper, fake, crumble, trapdoor, hidden, reverse, island, gap | — | collapse |
+| 19 | CRUSHER ROW | INSANE | 26.77 | — | 15: crusher, stalactites, trapdoor, crumble, ambush, tiles, skyspike, reverse, popup, gap | — | collapse |
+| 20 | QUICKSAND | INSANE | 26.93 | — | 16: tiles, slide, leaper, crumble, fake, reverse, skyspike, ambush, popup, gap | — | collapse |
+| 21 | CHASE | IMPOSSIBLE | 26.95 | — | 13: gap, popup, trapdoor, tiles, leaper, island, ambush, stalactites, crumble, hidden | wall 360 | plain |
+| 22 | MIXED SIGNALS | IMPOSSIBLE | 27.73 | — | 15: reverse, slide, skyspike, dropceiling, saw, popup, ambush, fake, trapdoor, crumble, stalactites, tiles, gap | — | collapse |
+| 23 | GRINDER | IMPOSSIBLE | 28.06 | — | 17: saw, crumble, popup, crusher, vsaw, stalactites, leaper, ambush, trapdoor, reverse, island, dropceiling, gap | — | collapse |
+| 24 | NEEDLE | IMPOSSIBLE | 30.02 | — | 16: dropceiling, spikes, leaper, ceiling, popup, crumble, skyspike, ambush, reverse, island, fake | — | collapse |
+| 25 | GAUNTLET | IMPOSSIBLE | 31.82 | — | 17: slide, crumble, skyspike, rusher, moving, crusher, popup, dropceiling, reverse, trapdoor, saw, tiles, ambush, island, gap | — | collapse |
+| 26 | NO MERCY | IMPOSSIBLE | 32.03 | — | 19: fake, dropceiling, crumble, trapdoor, vsaw, slide, rusher, ambush, reverse, moving, skyspike, tiles, crusher, island, stalactites, popup, gap | — | collapse |
+| 27 | STAMPEDE | IMPOSSIBLE | 35.17 | — | 14: rusher, crumble, trapdoor, dropceiling, leaper, tiles, popup, ambush, stalactites, island, gap | wall 365 | collapse |
+| 28 | FLIGHT | IMPOSSIBLE | 35.99 | — | 15: tiles, dropceiling, trapdoor, crumble, rusher, leaper, ambush, popup, ceiling, slide, island, stalactites, gap | wall 368 | collapse |
+| 29 | LAST BREATH | IMPOSSIBLE | 37.7 | — | 15: rusher, crumble, tiles, dropceiling, trapdoor, slide, ambush, island, fake, popup, ceiling, gap | wall 370 | collapse |
+| 30 | DESKMAN | DEVIL | 45.12 | — | 26: ambush, crumble, slide, rusher, moving, crusher, skyspike, dropceiling, island, reverse, saw, tiles, leaper, fake, vsaw, stalactites, trapdoor, popup, gap | — | collapse |

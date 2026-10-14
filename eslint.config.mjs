@@ -7,7 +7,7 @@ export default [
       sourceType: 'script',
       globals: {
         window: 'readonly', document: 'readonly', navigator: 'readonly', performance: 'readonly',
-        requestAnimationFrame: 'readonly', setTimeout: 'readonly', setInterval: 'readonly', clearInterval: 'readonly',
+        requestAnimationFrame: 'readonly', setTimeout: 'readonly', clearTimeout: 'readonly', setInterval: 'readonly', clearInterval: 'readonly',
         ResizeObserver: 'readonly', IntersectionObserver: 'readonly', fetch: 'readonly', FormData: 'readonly'
       }
     },

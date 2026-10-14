@@ -175,6 +175,32 @@ body.admin-bar #deskman-fun-root .dgm-wrap-full #app{ top:32px; height:calc(100v
   100%{ opacity:0; transform:translate(-50%,-60%) scale(0.96); }
 }
 
+/* ---------- "new element" card and hints ---------- */
+#deskman-fun-root .tip-box{
+  position:absolute; left:max(14px, env(safe-area-inset-left)); top:calc(max(12px, env(safe-area-inset-top)) + 64px);
+  max-width:min(330px, 46%); background:var(--dgm-white); color:var(--dgm-ink);
+  border:2px solid var(--dgm-ink); border-radius:12px; box-shadow:0 4px 0 var(--dgm-ink);
+  padding:10px 12px 10px; pointer-events:none; opacity:0; transform:translateY(-8px);
+  transition:opacity .2s ease, transform .2s ease;
+}
+#deskman-fun-root .tip-box.show{ opacity:1; transform:none; }
+#deskman-fun-root .tip-box .tip-badge{
+  display:inline-block; font-size:10px; font-weight:900; letter-spacing:1.5px; color:#fff;
+  background:var(--dgm-red); border-radius:6px; padding:3px 7px; margin-bottom:6px;
+}
+#deskman-fun-root .tip-box.hint .tip-badge{ background:var(--dgm-gold); color:var(--dgm-ink); }
+#deskman-fun-root .tip-box .tip-row{ font-size:13px; font-weight:600; line-height:1.35; color:#3b382f; }
+#deskman-fun-root .tip-box .tip-row + .tip-row{ margin-top:6px; }
+#deskman-fun-root .tip-box .tip-row b{ display:block; font-weight:900; font-size:12px; letter-spacing:.6px; color:var(--dgm-ink); }
+@media (max-width:640px){
+  #deskman-fun-root .tip-box{ top:calc(max(12px, env(safe-area-inset-top)) + 96px); max-width:calc(100% - 28px); }
+}
+@media (max-height:420px){
+  #deskman-fun-root .tip-box{ top:calc(max(10px, env(safe-area-inset-top)) + 80px); padding:7px 10px; max-width:min(300px, 44%); }
+  #deskman-fun-root .tip-box .tip-row{ font-size:12px; }
+}
+@media (prefers-reduced-motion:reduce){ #deskman-fun-root .tip-box{ transition:none; } }
+
 /* ---------- touch controls ---------- */
 #deskman-fun-root .controls{
   position:absolute; bottom:0; left:0; right:0;

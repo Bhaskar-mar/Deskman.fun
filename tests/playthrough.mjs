@@ -1,6 +1,6 @@
 // Automated play-throughs: drives the real engine in Chromium with scripted
-// inputs on the deterministic fixed-step debug hook and asserts each of the
-// five levels can be completed. Also checks that the traps actually fire
+// inputs on the deterministic fixed-step debug hook and asserts every level
+// can be completed. Also checks that the traps actually fire
 // (the naive "just hold right" run must die on every level).
 import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
 import path from 'node:path';
@@ -9,100 +9,9 @@ const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
 // Plan actions (see runPlan below):
 //   {hold:'right'} {release:'right'} {jumpAt:X} {jumpWhen:'expr'} {until:'expr'} {moveTo:X}
 // Expressions see: p (player), H (hazards), P (platforms), g (goal), ls.
-export const PLANS = {
-  1: [
-    {hold:'right'},
-    {jumpAt:466}, {jumpAt:800}, {jumpAt:1080}, {jumpAt:1800},
-    {until:"false"}
-  ],
-  2: [
-    {hold:'right'},
-    {moveTo:1590},
-    {until:"P[8].cx <= 1631 && P[8].waitT > 0.15"},
-    {hold:'right'}, {until:"p.x >= 1645"}, {release:'right'},
-    {until:"P[8].cx >= 1849"},
-    {hold:'right'},
-    {jumpAt:2170},
-    {jumpAt:2360},
-    {until:"false"}
-  ],
-  3: [
-    {hold:'right'},
-    {jumpAt:230}, {jumpAt:575}, {jumpAt:940},
-    {moveTo:1150},
-    {until:"H[2].dir < 0 && H[2].cx < 1460 && H[2].cx > 1250"},
-    {hold:'right'},
-    {jumpWhen:"H[2].cx - (p.x + p.w) < 90"},
-    {jumpAt:1600},
-    {until:"p.x >= 2006"}, {release:'right'}, {hold:'left'},
-    {until:"H[3].state === 'rested'"}, {release:'left'},
-    {hold:'right'}, {jumpAt:2060},
-    {jumpAt:3060},
-    {until:"false"}
-  ],
-  4: [
-    {hold:'right'},
-    {jumpAt:560}, {jumpAt:890}, {jumpAt:1790},
-    {moveTo:2200},
-    {until:"H[1].dir < 0 && H[1].cy < 580"},
-    {hold:'right'},
-    {jumpAt:2440}, {jumpAt:2925}, {jumpAt:3170},
-    {until:"false"}
-  ],
-  5: [
-    {hold:'right'},
-    {jumpAt:670},
-    {moveTo:975},
-    {until:"P[3].cx <= 1001 && P[3].waitT > 0.15"},
-    {hold:'right'}, {until:"p.x >= 1012"}, {release:'right'},
-    {until:"P[3].cx >= 1239"},
-    {hold:'right'},
-    {jumpAt:1500}, {jumpAt:1795}, {jumpAt:2020},
-    {jumpWhen:"(H[2].cx - (p.x + p.w)) < 110 && (H[2].cx - (p.x + p.w)) > 0 && p.x > 2420"},
-    {jumpAt:3060}, {jumpAt:3440}, {jumpAt:3650},
-    {until:"false"}
-  ],
-  6: [
-    {hold:'right'},
-    {jumpAt:150}, {jumpAt:450}, {jumpAt:950},
-    {jumpWhen:"H[1].cx - (p.x + p.w) < 170 && H[1].cx > p.x"},
-    {tapAt:2340},
-    {jumpAt:2850},
-    {until:"p.x >= 3170"}, {release:'right'}, {hold:'left'},
-    {until:"H[4].state === 'rested'"}, {release:'left'},
-    {hold:'right'}, {jumpAt:3220},
-    {until:"false"}
-  ],
-  7: [
-    {hold:'right'},
-    {jumpAt:560}, {jumpAt:980}, {jumpAt:1975},
-    {jumpWhen:"H[1].cx - (p.x + p.w) < 170 && H[1].cx > p.x"},
-    {jumpAt:2590},
-    {tapAt:3075},
-    {jumpAt:3350},
-    {until:"false"}
-  ],
-  8: [
-    {hold:'right'},
-    {jumpAt:470}, {jumpAt:890},
-    {jumpWhen:"H[1].cx - (p.x + p.w) < 170 && H[1].cx > p.x"},
-    {moveTo:1960},
-    {until:"P[5].cx <= 2001 && P[5].waitT > 0.15"},
-    {hold:'right'}, {until:"p.x >= 2015"}, {release:'right'},
-    {until:"P[5].cx >= 2289"},
-    {hold:'right'},
-    {until:"p.x >= 2570"}, {release:'right'},
-    {until:"H[3].state === 'rested'"},
-    {hold:'right'}, {jumpAt:2640},
-    {moveTo:3330},
-    {until:"H[4].dir < 0 && H[4].cx < 3580 && H[4].cx > 3450"},
-    {hold:'right'},
-    {jumpWhen:"H[4].cx - (p.x + p.w) < 90"},
-    {jumpAt:3640},
-    {jumpAt:4630}, {jumpAt:4915}, {jumpAt:5030},
-    {until:"false"}
-  ]
-};
+// Every level is built from segments and carries its own winning route
+// (see buildLevel in src/game/deskman-game.js). PLANS can override a route.
+export const PLANS = {};
 
 export async function runPlanExported(page, levelIndex, plan, opts){ return runPlan(page, levelIndex, plan, opts); }
 async function runPlan(page, levelIndex, plan, opts = {}) {
@@ -170,7 +79,7 @@ async function runPlan(page, levelIndex, plan, opts = {}) {
   }, {levelIndex, plan, startCheckpoint: opts.cp, maxSec: opts.maxSec || 40, jitter: opts.jitter || 0, seed: opts.seed || 1, trackChaser: !!opts.trackChaser});
 }
 
-// Levels 9+ are built from segments and carry their own winning route.
+// Every level is built from segments and carries its own winning route.
 export async function levelRoutes(page) {
   return page.evaluate(() => window.DeskmanFun.debug.LEVELS.map(l => l.route || null));
 }
@@ -178,10 +87,10 @@ export async function levelRoutes(page) {
 // Difficulty curve: for every timed jump in a level's winning route, sweep
 // the take-off point (others at nominal) and measure the width of the window
 // that still clears the level. Fewer/narrower windows = harder.
-export async function difficulty(page, range = 160, stepSize = 4) {
+export async function difficulty(page, range = 160, stepSize = 4, onlyIds = null) {
   const out = {};
   const routes = await levelRoutes(page);
-  const ids = routes.map((r, i) => i + 1);
+  const ids = onlyIds || routes.map((r, i) => i + 1);
   for (const id of ids) {
     const plan = PLANS[id] || routes[id - 1];
     const windows = [];
@@ -211,14 +120,20 @@ export async function difficulty(page, range = 160, stepSize = 4) {
       L.platforms.forEach((p, i) => { if (p.type === 'disappearing' && p.delay - p.w / 380 * 1000 > 0) tileGroups[Math.round(p.x / 1000)] = 1; });
       tiles = Object.keys(tileGroups).length + Object.values(groups).reduce((a, b) => a + b, 0);
       L.hazards.forEach(h => {
-        if (h.type === 'spike' && h.idle) react += 0.6 + (h.path.speed - 480) / 200;
+        if (h.kind === 'skyspike' || h.kind === 'leaper') react += 0.9;
+        else if (h.type === 'spike' && h.idle) react += 0.6 + (h.path.speed - 480) / 200;
         if (h.type === 'saw') react += 0.5 + (h.path.speed - 200) / 200;
         if (h.type === 'fallingCeiling') react += 0.6;
         if (h.type === 'hiddenSpike') react += 0.4;
       });
       L.platforms.forEach(p => { if (p.type === 'moving') react += 0.5; if (p.type === 'invisible') react += 0.3; });
       if (L.goal.type === 'fake') react += 0.3;
-      (L.triggers || []).forEach(tr => (tr.actions || []).forEach(a => { if (a.do === 'reverse' && a.on) react += 1.5; }));
+      (L.triggers || []).forEach(tr => (tr.actions || []).forEach(a => {
+        if (a.do === 'reverse' && a.on) react += 1.5;
+        if (a.do === 'slide' && a.to.y >= 900) react += 0.6;                                   // trapdoor
+        if (a.do === 'slide' && a.to.y != null && a.to.y < 680 && L.platforms[a.plat].w <= 60) react += 0.3; // rising wall
+        if (a.do === 'moveGoal') react += 0.25;                                                 // door runs away
+      }));
       return {tiles: +tiles.toFixed(2), react: +react.toFixed(2), chase: L.hazards.some(h => h.type === 'chaser')};
     }, +id - 1);
     // chasing wall: how little speed advantage you have (run speed 380)

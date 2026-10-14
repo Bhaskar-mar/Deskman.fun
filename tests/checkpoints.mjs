@@ -5,13 +5,9 @@ import path from 'node:path';
 import { runPlanExported, levelRoutes, PLANS } from './playthrough.mjs';
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 
-// Hand-built levels: the first route action to replay after each checkpoint.
-const HAND = {
-  3: ['{"until":"p.x >= 2006"}'],
-  5: ['{"jumpAt":2020}'],
-  6: ['{"tapAt":2340}', '{"jumpAt":2850}'],
-  8: ['{"moveTo":1960}', '{"moveTo":3330}']
-};
+// Optional overrides for levels with hand-written PLANS: the first route
+// action to replay after each checkpoint.
+const HAND = {};
 
 export async function checkpoints(page) {
   const routes = await levelRoutes(page);

@@ -96,6 +96,19 @@ const row = await page.evaluate(() => ({text: document.querySelector('#boardBody
 check('in-game leaderboard shows the player, highlighted as "you"', row.text.includes('speedy') && row.me, row);
 await page.click('#btnCloseBoard');
 
+/* ---- upgrading from 2.0.x: old-map times are kept but not ranked ---- */
+const speedyId = JSON.parse(wp('user', 'speedy@example.com')).id;
+wp('legacy-scores-table', String(speedyId));
+await page.goto(playUrl + '?debug=1'); // any request runs the upgrade
+const legacy = JSON.parse(wp('scores'));
+check('upgrade adds the season column and keeps old times (season 1)', legacy.length === 1 && Number(legacy[0].season) === 1 && Number(legacy[0].best_time_ms) === 2000 && JSON.parse(wp('option', 'deskman_fun_db_version')) === '2', legacy);
+const lb3 = await page.evaluate(async () => (await (await fetch(window.DESKMAN_CONFIG.restUrl + 'leaderboard?level=3')).json()).rows.length);
+check('old-map times are not ranked on the new leaderboard', lb3 === 0, lb3);
+const resub = await page.evaluate(async () => { const c = window.DESKMAN_CONFIG; const r = await fetch(c.restUrl + 'score', {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json', 'X-WP-Nonce': window.DeskmanFun.debug.nonce()}, body: JSON.stringify({level:3, timeMs:60000, deaths:2})}); return {status: r.status, body: await r.json()}; });
+const after = JSON.parse(wp('scores')).find(r => Number(r.level_id) === 3);
+const lb3b = await page.evaluate(async () => (await (await fetch(window.DESKMAN_CONFIG.restUrl + 'leaderboard?level=3')).json()).rows);
+check('first clear on the new map replaces the old time and is ranked', resub.status === 200 && resub.body.personalBest === true && Number(after.season) === 2 && Number(after.best_time_ms) === 60000 && Number(after.clears) === 1 && lb3b.length === 1 && lb3b[0].timeMs === 60000, {resub, after, lb3b});
+
 /* ---- cheating and abuse ---- */
 const cheat = await page.evaluate(async () => { const c = window.DESKMAN_CONFIG; const post = async (b, n) => (await fetch(c.restUrl + 'score', {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json', ...(n ? {'X-WP-Nonce': window.DeskmanFun.debug.nonce()} : {})}, body: JSON.stringify(b)})).status;
   return {noNonce: await post({level:2, timeMs:90000, deaths:1}, false), tooFast: await post({level:2, timeMs:10, deaths:0}, true), badLevel: await post({level:99, timeMs:90000, deaths:0}, true)}; });

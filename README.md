@@ -1,6 +1,6 @@
 # deskman.fun
 
-A short, surprise-driven stickman platformer (30 levels, easy → devil) delivered as a WordPress plugin (`deskman-fun`, shortcodes `[deskman_game]` and `[deskman_leaderboard]`) and a matching theme (`deskman-fun-theme`). Guests play without an account; players who sign up (email + verification, or Google) get synced progress and a place on the leaderboard.
+A short, surprise-driven stickman platformer (30 levels, easy → devil) delivered as a WordPress plugin (`deskman-fun`, shortcodes `[deskman_game]` and `[deskman_leaderboard]`) and a matching theme (`deskman-fun-theme`). Each of levels 1–10 names its new tricks on a "NEW" card before using them against you; dying twice at the same obstacle shows a hint. Guests play without an account; players who sign up (email + verification, or Google) get synced progress and a place on the leaderboard.
 
 ## Repository layout
 
@@ -18,8 +18,8 @@ A short, surprise-driven stickman platformer (30 levels, easy → devil) deliver
 
 ```bash
 ./tools/build.sh
-# → dist/deskman-fun-2.0.1.zip
-# → dist/deskman-fun-theme-2.0.1.zip
+# → dist/deskman-fun-2.1.0.zip
+# → dist/deskman-fun-theme-2.1.0.zip
 ```
 
 The script needs only `bash`, `zip` and `sed`. Each ZIP contains a single top-level folder (`deskman-fun/` and `deskman-fun-theme/`), which is the layout WordPress expects for uploads. `dist/` is git-ignored.
@@ -28,9 +28,9 @@ The script needs only `bash`, `zip` and `sed`. Each ZIP contains a single top-le
 
 Back up the site (files and database) first. Then:
 
-1. **Plugin.** Go to *Plugins → Add New → Upload Plugin* and choose `deskman-fun-2.0.1.zip`. WordPress offers *Replace current with uploaded*; accept it.
-2. **Theme** (if you use it). Go to *Appearance → Themes → Add New → Upload Theme* and choose `deskman-fun-theme-2.0.1.zip`, then *Replace current with uploaded*.
-3. Hard-refresh the Play page. Assets are versioned `?ver=2.0.1`, so browser and CDN caches pick up the new files. If you run a page-cache plugin, purge it once.
+1. **Plugin.** Go to *Plugins → Add New → Upload Plugin* and choose `deskman-fun-2.1.0.zip`. WordPress offers *Replace current with uploaded*; accept it.
+2. **Theme** (if you use it). Go to *Appearance → Themes → Add New → Upload Theme* and choose `deskman-fun-theme-2.1.0.zip`, then *Replace current with uploaded*.
+3. Hard-refresh the Play page. Assets are versioned `?ver=2.1.0`, so browser and CDN caches pick up the new files. If you run a page-cache plugin, purge it once.
 
 Upgrade notes:
 * 2.0 adds a `{prefix}deskman_scores` table and Terms / Privacy / Leaderboard pages. They are created automatically on the first page load after the upgrade (no reactivation needed). Existing pages with those slugs are never overwritten. The `/play` page and front-page setting are left as they are.
@@ -47,7 +47,7 @@ Rollback: upload the original `deskman-fun.zip` / `deskman-fun-theme.zip` from t
 
 ```bash
 ./tools/build.sh                  # always rebuild before testing
-node tests/run-all.mjs            # play-throughs, traps, physics, browser integration (142 checks)
+node tests/run-all.mjs            # play-throughs, traps, physics, browser integration (144 checks)
 npx eslint src/game               # lint (config in eslint.config.mjs)
 ```
 
@@ -59,7 +59,7 @@ WordPress end-to-end test (real WordPress + SQLite + PHP built-in server):
 tests/wordpress/setup-wp.sh <wordpress-core-dir> <sqlite-database-integration-dir> /tmp/wp 8088
 php -S 127.0.0.1:8088 -t /tmp/wp /tmp/wp/.router.php &
 node tests/wordpress/wp-integration.mjs /tmp/wp http://127.0.0.1:8088   # 26 checks: upgrade path
-node tests/wordpress/wp-accounts.mjs /tmp/wp http://127.0.0.1:8088      # 34 checks: accounts, email, Google (faked), leaderboard, privacy
+node tests/wordpress/wp-accounts.mjs /tmp/wp http://127.0.0.1:8088      # 37 checks: accounts, email, Google (faked), leaderboard + season upgrade, privacy
 ```
 
 The setup installs the **original v1.2.0** ZIPs. The test then upgrades them in place to `dist/`, so it exercises the real upgrade path.

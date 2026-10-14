@@ -11,7 +11,7 @@ if(!root || root.getAttribute('data-dgm-init')) return;
 root.setAttribute('data-dgm-init','1');
 
 const $ = (id)=>document.getElementById(id);
-const GAME_VERSION = '2.0.1';
+const GAME_VERSION = '2.1.0';
 const DEBUG = window.DESKMAN_DEBUG === true;
 
 /* =========================================================================
@@ -23,6 +23,9 @@ const DEBUG = window.DESKMAN_DEBUG === true;
 ========================================================================= */
 const STORAGE_KEY = 'deskmanfun_save_v1';
 const SAVE_VERSION = 2;
+// Bumped when level layouts change so old best times (set on different
+// maps) are archived instead of compared with new runs. 2 = 2.1.0 levels.
+const STATS_SEASON = 2;
 function defaultSettings(){ return { sound:true, music:true, vibration:true, reducedMotion:false }; }
 function defaultSave(){
   return {
@@ -31,10 +34,12 @@ function defaultSave(){
     completedLevels: [],
     totalDeaths: 0,
     levelStats: {},           // { [levelId]: { clears, bestTime, bestDeaths } }
+    statsSeason: STATS_SEASON,
     settings: defaultSettings()
   };
 }
 function isPlainObject(v){ return !!v && typeof v === 'object' && !Array.isArray(v); }
+let saveMigrated = false;
 function loadSave(){
   let parsed = null;
   try{
@@ -50,6 +55,18 @@ function loadSave(){
     ? parsed.completedLevels.map(n=>parseInt(n,10)).filter(n=>n>0) : [];
   out.totalDeaths = Math.max(0, parseInt(parsed.totalDeaths, 10) || 0);
   out.levelStats = isPlainObject(parsed.levelStats) ? parsed.levelStats : {};
+  const season = parseInt(parsed.statsSeason, 10) || 1;
+  if(season < STATS_SEASON){
+    // Levels were redesigned: keep the old stats (archived, never deleted)
+    // and start best times fresh. Unlocks and completions are untouched.
+    if(Object.keys(out.levelStats).length){
+      out.archivedLevelStats = Object.assign({}, isPlainObject(parsed.archivedLevelStats) ? parsed.archivedLevelStats : {});
+      out.archivedLevelStats['season' + season] = out.levelStats;
+    }
+    out.levelStats = {};
+    out.statsSeason = STATS_SEASON;
+    saveMigrated = true;
+  }
   out.settings = Object.assign(defaultSettings(), isPlainObject(parsed.settings) ? parsed.settings : {});
   out.version = Math.max(SAVE_VERSION, parseInt(parsed.version, 10) || 0);
   return out;
@@ -58,6 +75,7 @@ const save = loadSave();
 function persistSave(){
   try{ window.localStorage.setItem(STORAGE_KEY, JSON.stringify(save)); }catch(e){}
 }
+if(saveMigrated) persistSave();
 
 /* =========================================================================
    AUDIO (synthesized WebAudio, no files)
@@ -255,252 +273,10 @@ const G = 680; // standard ground top
 function ground(x, w, extra){ return Object.assign({x, y:G, w, h:900-G, type:'solid'}, extra||{}); }
 function spike(x, w){ return {x, y:G-22, w:w||44, h:22, type:'spike'}; }
 
-const LEVELS = [
-  {
-    id:1, name:'TRUST', subtitle:'Move. Jump. Believe.',
-    width:2400, height:900, spawn:{x:90, y:G-62},
-    platforms:[
-      ground(0, 520),
-      ground(640, 540),
-      {x:1180, y:600, w:300, h:300, type:'solid'},
-      ground(1480, 920)
-    ],
-    hazards:[
-      spike(880),
-      {x:1878, y:G-22, w:84, h:22, type:'hiddenSpike'}
-    ],
-    triggers:[
-      {x:1700, w:40, actions:[{do:'moveGoal', to:{x:2250, y:G-100}}, {do:'reveal', hazard:1}]}
-    ],
-    goal:{x:1885, y:G-100, w:70, h:100, type:'normal'},
-    annotations:[
-      {x:70, y:470, text:'← → to move, ↑ to jump', touchText:'hold ← → to move, tap JUMP'},
-      {x:1640, y:470, text:'almost there...'}
-    ],
-    deathMessages:["The door had other plans.","It moved. Obviously.","Exits are suggestions."],
-    completionMessage:"Lesson one: the exit is never where it says it is."
-  },
-  {
-    id:2, name:'Disappearing Floor', subtitle:'The floor disappears.',
-    width:3200, height:900, spawn:{x:90, y:G-62},
-    platforms:[
-      ground(0, 300),
-      ground(300, 200, {type:'disappearing', delay:650}),
-      ground(500, 250),
-      ground(750, 150, {type:'disappearing', delay:560}),
-      ground(900, 150, {type:'disappearing', delay:520}),
-      ground(1050, 150, {type:'disappearing', delay:480}),
-      ground(1200, 150, {type:'disappearing', delay:440}),
-      ground(1350, 280),
-      {x:1630, y:G, w:130, h:30, type:'moving', path:{x1:1630, y1:G, x2:1850, y2:G, speed:150, pauseStart:0.6, pause:0.8}},
-      ground(1990, 400),
-      ground(2390, 250, {type:'disappearing', delay:170}),
-      ground(2640, 560)
-    ],
-    hazards:[ spike(2230) ],
-    goal:{x:3020, y:G-100, w:70, h:100, type:'normal'},
-    annotations:[ {x:560, y:520, text:"don't stop."} ],
-    deathMessages:["You trusted the floor.","That was definitely the floor.","It was never going to hold.","You stopped. It noticed.","That one was faster. Sorry."],
-    completionMessage:"Nothing under you was ever permanent. You kept moving anyway."
-  },
-  {
-    id:3, name:'HIDDEN', subtitle:'Not everything is visible.',
-    width:3600, height:900, spawn:{x:90, y:G-62},
-    platforms:[
-      ground(0, 980),
-      ground(1100, 600),
-      {x:1700, y:560, w:300, h:340, type:'solid'},
-      ground(2000, 600),
-      ground(2600, 300, {type:'invisible'}),
-      ground(2900, 700)
-    ],
-    hazards:[
-      spike(300),
-      {x:640, y:G-22, w:44, h:22, type:'hiddenSpike', revealTrigger:{x:520, w:40}},
-      {x:1180, y:G-56, w:56, h:56, type:'saw', path:{x1:1180, y1:G-56, x2:1520, y2:G-56, speed:200, pauseStart:0, pause:0.5}},
-      {x:2140, y:330, w:160, h:90, type:'fallingCeiling', triggerZone:{x:2040, w:40}, warningTime:0.4, fallSpeed:1300, restY:G-90},
-      {x:3150, y:G-22, w:44, h:22, type:'hiddenSpike', revealTrigger:{x:3040, w:40}}
-    ],
-    checkpoints:[ {x:1760, y:560} ],
-    goal:{x:3300, y:G-100, w:70, h:100, type:'fake', fakeCount:1},
-    annotations:[ {x:2610, y:600, text:'trust me.'} ],
-    deathMessages:["Not everything is visible.","It was there the whole time.","That wasn't on the map.","Look up. Then don't go there yet."],
-    completionMessage:"You stopped trusting your eyes. Smart."
-  },
-  {
-    id:4, name:"DON'T STOP", subtitle:'Something is behind you.',
-    width:3900, height:900, spawn:{x:90, y:G-62},
-    platforms:[
-      ground(0, 620),
-      ground(740, 480),
-      ground(1220, 150, {type:'disappearing', delay:420}),
-      ground(1370, 150, {type:'disappearing', delay:420}),
-      ground(1520, 380),
-      {x:1900, y:560, w:260, h:340, type:'solid'},
-      ground(2160, 340),
-      ground(2700, 1200)
-    ],
-    hazards:[
-      spike(960),
-      {x:2300, y:470, w:60, h:60, type:'saw', path:{x1:2300, y1:470, x2:2300, y2:G-56, speed:260, pauseStart:0, pause:0.25}},
-      {type:'chaser', x:-2400, y:0, w:2400, h:900, startX:-260, stopX:3300, speed:352},
-      spike(3000),
-      spike(3250, 66)
-    ],
-    triggers:[
-      {x:330, w:20, actions:[{do:'start', hazard:2}, {do:'toast', text:'RUN.'}]}
-    ],
-    goal:{x:3650, y:G-100, w:70, h:100, type:'normal'},
-    annotations:[],
-    deathMessages:["Momentum is everything.","It doesn't get tired.","You hesitated.","Jump or don't. Decide faster."],
-    completionMessage:"You never stopped moving."
-  },
-  {
-    id:5, name:'TRUST NOTHING', subtitle:'Everything you learned. At once.',
-    width:3900, height:900, spawn:{x:90, y:G-62},
-    platforms:[
-      ground(0, 400),
-      ground(400, 150, {type:'disappearing', delay:450}),
-      ground(550, 450),
-      {x:1000, y:G, w:130, h:30, type:'moving', path:{x1:1000, y1:G, x2:1240, y2:G, speed:170, pauseStart:0.5, pause:0.7}},
-      ground(1380, 500),
-      {x:1880, y:560, w:200, h:340, type:'solid'},
-      {x:2080, y:440, w:200, h:460, type:'solid'},
-      ground(2400, 700),
-      ground(3100, 240),
-      ground(3340, 220),
-      {x:3560, y:540, w:130, h:360, type:'solid'},
-      {x:3690, y:540, w:90, h:360, type:'solid'},
-      {x:3780, y:540, w:120, h:360, type:'solid'},
-      {x:3880, y:300, w:20, h:240, type:'solid'}
-    ],
-    hazards:[
-      {x:760, y:G-22, w:44, h:22, type:'hiddenSpike', revealTrigger:{x:650, w:40}},
-      spike(1600),
-      {x:2550, y:G-56, w:56, h:56, type:'saw', path:{x1:2550, y1:G-56, x2:2950, y2:G-56, speed:230, pauseStart:0, pause:0.4}}
-    ],
-    triggers:[
-      {x:3040, w:40, actions:[{do:'collapse', plat:8, delay:150}, {do:'moveGoal', to:{x:3800, y:440}}]},
-      {x:3630, w:20, actions:[{do:'collapse', plat:11, delay:110}]}
-    ],
-    checkpoints:[ {x:1930, y:560} ],
-    goal:{x:3200, y:G-100, w:70, h:100, type:'normal'},
-    annotations:[ {x:3130, y:500, text:'finally.'} ],
-    deathMessages:["You trusted something.","Everything you learned, and still.","Nothing here was ever solid.","So close it hurts."],
-    completionMessage:"Nothing lied to you. You just stopped trusting it."
-  },
-  {
-    id:6, name:'SLIDE', subtitle:'The ground has opinions.',
-    width:3700, height:900, spawn:{x:90, y:G-62},
-    platforms:[
-      ground(0, 500),
-      ground(600, 400),
-      ground(1000, 300),                                 // 2: slides away from you
-      ground(1500, 600),
-      ground(2100, 600),
-      {x:2250, y:-1200, w:400, h:1670, type:'solid'},    // 5: low ceiling
-      ground(2700, 200),
-      ground(3050, 650)
-    ],
-    hazards:[
-      spike(220),
-      {x:2050, y:G-22, w:44, h:22, type:'spike', idle:true, path:{x1:2050, y1:G-22, x2:1520, y2:G-22, speed:520, once:true}},
-      {x:2250, y:470, w:400, h:22, type:'spike', flip:true},
-      spike(2425, 32),
-      {x:3300, y:330, w:70, h:90, type:'fallingCeiling', triggerZone:{x:3200, w:30}, warningTime:0.25, fallSpeed:1500, restY:G-90}
-    ],
-    triggers:[
-      {x:930, w:20, actions:[{do:'slide', plat:2, to:{x:1200}, dur:0.22}]},
-      {x:1600, w:20, actions:[{do:'start', hazard:1}]}
-    ],
-    checkpoints:[ {x:2160, y:G}, {x:2790, y:G} ],
-    goal:{x:3550, y:G-100, w:70, h:100, type:'normal'},
-    annotations:[ {x:2270, y:560, text:'tap.'} ],
-    deathMessages:["The floor moved. You didn't.","Full jumps are for open skies.","It was coming the whole time.","Short hop. SHORT."],
-    completionMessage:"You learned to jump less. That's growth."
-  },
-  {
-    id:7, name:'PANIC', subtitle:'No time to think.',
-    width:4300, height:900, spawn:{x:90, y:G-62},
-    platforms:[
-      ground(0, 700),
-      ground(820, 480),
-      ground(1300, 100, {type:'disappearing', delay:330}),
-      ground(1400, 100, {type:'disappearing', delay:330}),
-      ground(1500, 100, {type:'disappearing', delay:330}),
-      ground(1600, 400),
-      ground(2000, 240),                                 // 6: drops out of the world
-      ground(2240, 460),
-      {x:2700, y:560, w:200, h:340, type:'solid'},
-      ground(2900, 500),
-      {x:2950, y:-1200, w:400, h:1670, type:'solid'},    // 10: low ceiling
-      ground(3600, 700)
-    ],
-    hazards:[
-      spike(1050),
-      {x:2650, y:G-22, w:44, h:22, type:'spike', idle:true, path:{x1:2650, y1:G-22, x2:2260, y2:G-22, speed:480, once:true}},
-      {x:2950, y:470, w:400, h:22, type:'spike', flip:true},
-      spike(3150),
-      {type:'chaser', x:-2400, y:0, w:2400, h:900, startX:-150, stopX:3550, speed:355}
-    ],
-    triggers:[
-      {x:330, w:20, actions:[{do:'start', hazard:4}, {do:'toast', text:'RUN. FASTER.'}]},
-      {x:1900, w:20, actions:[{do:'slide', plat:6, to:{y:1100}, dur:0.3}]},
-      {x:2250, w:20, actions:[{do:'start', hazard:1}]}
-    ],
-    goal:{x:4050, y:G-100, w:70, h:100, type:'fake', fakeCount:1},
-    annotations:[],
-    deathMessages:["Panic is a choice. A bad one.","It's faster this time.","The wall says hi.","Everything at once. As promised."],
-    completionMessage:"You outran it. Barely. Again."
-  },
-  {
-    id:8, name:'THE DEVIL', subtitle:'Everything is a lie.',
-    width:5300, height:900, spawn:{x:90, y:G-62},
-    platforms:[
-      ground(0, 400),
-      ground(400, 500),
-      ground(900, 250),                                  // 2: slides away
-      ground(1370, 330),
-      ground(1700, 300),
-      {x:2000, y:G, w:120, h:30, type:'moving', path:{x1:2000, y1:G, x2:2290, y2:G, speed:180, pauseStart:0.4, pause:0.6}},
-      {x:2000, y:-1200, w:420, h:1670, type:'solid'},    // 6: ceiling over the pit
-      ground(2420, 480),
-      ground(2900, 100, {type:'disappearing', delay:330}),
-      ground(3000, 100, {type:'disappearing', delay:330}),
-      ground(3100, 100, {type:'disappearing', delay:330}),
-      ground(3200, 100, {type:'disappearing', delay:330}),
-      ground(3300, 400),
-      ground(3880, 420),
-      ground(4300, 200, {type:'invisible'}),
-      ground(4500, 150),
-      ground(4650, 260),                                 // 16: collapses under the first exit
-      ground(4910, 90),
-      {x:5000, y:540, w:300, h:360, type:'solid'},
-      {x:5280, y:300, w:20, h:240, type:'solid'}
-    ],
-    hazards:[
-      {x:560, y:G-22, w:44, h:22, type:'hiddenSpike', revealTrigger:{x:450, w:30}},
-      {x:1950, y:G-22, w:44, h:22, type:'spike', idle:true, path:{x1:1950, y1:G-22, x2:1340, y2:G-22, speed:540, once:true}},
-      {x:2000, y:470, w:420, h:22, type:'spike', flip:true},
-      {x:2700, y:330, w:140, h:90, type:'fallingCeiling', triggerZone:{x:2600, w:40}, warningTime:0.3, fallSpeed:1500, restY:G-90},
-      {x:3400, y:G-56, w:56, h:56, type:'saw', path:{x1:3400, y1:G-56, x2:3640, y2:G-56, speed:280, pauseStart:0, pause:0.3}},
-      {x:5100, y:518, w:44, h:22, type:'hiddenSpike', revealTrigger:{x:5060, w:20}}
-    ],
-    triggers:[
-      {x:820, w:20, actions:[{do:'slide', plat:2, to:{x:1120}, dur:0.2}]},
-      {x:1400, w:20, actions:[{do:'start', hazard:1}]},
-      {x:4560, w:20, actions:[{do:'collapse', plat:16, delay:120}, {do:'moveGoal', to:{x:5195, y:440}}]}
-    ],
-    checkpoints:[ {x:1730, y:G}, {x:3350, y:G} ],
-    goal:{x:4720, y:G-100, w:70, h:100, type:'normal'},
-    annotations:[ {x:4600, y:500, text:'you made it!'} ],
-    deathMessages:["Welcome to the end.","That was the easy part.","Every trick. One level.","The devil is in the details. And the floor.","You'll get it. Eventually."],
-    completionMessage:"You beat a level designed to be impossible. Take a break. You've earned it."
-  }
-];
+const LEVELS = [];
 
 /* =========================================================================
-   LEVELS 9-30: assembled from obstacle segments.
+   LEVELS: assembled from obstacle segments.
    Each segment starts on flat ground at cursor `c`, adds its geometry and
    the inputs that clear it (`route`, used by the automated play-through
    tests to prove every level is beatable). Parameters tighten as levels go
@@ -509,10 +285,45 @@ const LEVELS = [
 
    Segment specs (strings): 'gap:W' 'island:W:I' 'spikes:N' 'hidden' 'tiles:K:W:MARGINms'
    'slide:W' 'rusher:SPEED' 'ceiling' 'crusher' 'saw:SPEED' 'vsaw'
-   'moving:W[:ceil]' 'step' 'invisible:W' 'fake'
+   'moving:W[:ceil]' 'step' 'invisible:W' 'fake' 'trapdoor:W' 'skyspike' 'leaper' 'riser'
+   Every segment also gets a hint (SEG_HINTS) that the game shows after a
+   player dies at it twice, and each level can list the new elements it
+   introduces (`learn`), shown as a card when the level starts.
 ========================================================================= */
+const SEG_HINTS = {
+  gap:'Jump from the very edge, and hold jump to go further.',
+  spikes:'Hold jump longer to clear wide spikes.',
+  hidden:'A spike hides in the floor here. Jump just before where it pops up.',
+  tiles:'Cracked floor falls. Never stop on it: run straight across.',
+  slide:'The floor slides away from you. Jump right at the edge, as it moves.',
+  rusher:'That spike charges at you. Keep running and jump when it is close.',
+  ceiling:'Spiked ceiling: tap jump for a tiny hop. A full jump kills you.',
+  crusher:'Stop before the crusher. Let it slam down, then climb over it.',
+  saw:'Wait for the saw to move away from you, then run in behind it.',
+  vsaw:'Run under the saw while it is up.',
+  moving:'Wait for the platform, step on, stand still. Do not jump under the spikes.',
+  island:'Land on the pillar and jump again straight away.',
+  ambush:'A spike pops up where you would land. Jump from the very edge, then hop it.',
+  crumble:'The pillar falls the moment you land. Jump again instantly.',
+  reverse:'In the red zone, left is right. Press \u2190 to go forward and jump the spike.',
+  dropceiling:'The ceiling drops on you. Keep running and only tap jump.',
+  stalactites:'Blocks fall when you pass under them. Never slow down.',
+  popup:'Three spikes pop up one after another: hop, hop, hop.',
+  step:'Jump up onto the ledge.',
+  invisible:'There is a floor here. You just cannot see it. Keep walking.',
+  fake:'That floor is fake. Jump over it.',
+  trapdoor:'The floor drops away under you. Jump before you reach the seam.',
+  skyspike:'A spike falls from the sky. Stop when it starts falling, let it land, then jump it.',
+  leaper:'That spike jumps when you jump. Do not jump: just run under it.',
+  riser:'A wall shoots up. Jump it the moment it rises.',
+  'exit-collapse':'The floor under the door falls and the door runs. Jump early, then climb the ledges.',
+  'exit-fake':'The door pushes you back once. Walk into it again.',
+  'exit-runaway':'The door runs away and leaves a spike behind. Follow it and jump the spike.',
+  'exit-plain':'Almost there. Do not get greedy.',
+  chase:'The wall never stops. Neither can you: no pauses, no hesitation.'
+};
 function buildLevel(def){
-  const plats = [], hazards = [], triggers = [], checkpoints = [], route = [{hold:'right'}];
+  const plats = [], hazards = [], triggers = [], checkpoints = [], route = [{hold:'right'}], segs = [];
   const P = (o)=>{ plats.push(o); return plats.length - 1; };
   const H = (o)=>{ hazards.push(o); return hazards.length - 1; };
   let c = 0;
@@ -520,6 +331,7 @@ function buildLevel(def){
   def.segments.forEach((spec, n)=>{
     const a = spec.split(':'), kind = a[0], v = parseFloat(a[1]);
     if(!def.chase && n > 0 && n % 3 === 0) checkpoints.push({x:c + 80, y:G, routeIndex:route.length});
+    const x0 = c;
     switch(kind){
       case 'gap':
         P(ground(c, 300)); route.push({jumpAt:c + 260}); c += 300 + v; break;
@@ -655,12 +467,55 @@ function buildLevel(def){
       case 'fake':
         P(ground(c, 300)); P(ground(c + 300, 250, {type:'disappearing', delay:170}));
         route.push({jumpAt:c + 260}); c += 550; break;
+      case 'trapdoor': {
+        // looks like more floor; drops out of the world as you arrive
+        P(ground(c, 300));
+        const t = P(ground(c + 300, v));
+        triggers.push({x:c + 210, w:20, actions:[{do:'slide', plat:t, to:{y:1100}, dur:0.2}]});
+        route.push({jumpAt:c + 255}); c += 300 + v; break;
+      }
+      case 'skyspike': {
+        // a spike drops out of the sky onto the spot you are running to
+        const X = c + 400;
+        P(ground(c, 700));
+        const h = H({x:X, y:-120, w:50, h:24, type:'spike', flip:true, idle:true, noTrack:true, kind:'skyspike', path:{x1:X, y1:-120, x2:X, y2:G-24, speed:1500, once:true}});
+        triggers.push({x:c + 220, w:20, actions:[{do:'start', hazard:h}]});
+        route.push({until:'!H[' + h + '].idle'}, {release:'right'}, {until:'H[' + h + '].done'}, {hold:'right'}, {jumpAt:X - 105});
+        c += 700; break;
+      }
+      case 'leaper': {
+        // a floor spike that leaps up into your jump: run under it instead
+        const X = c + 400;
+        P(ground(c, 700));
+        const h = H({x:X, y:G-22, w:44, h:22, type:'spike', idle:true, noTrack:true, kind:'leaper', path:{x1:X, y1:G-22, x2:X, y2:G-215, speed:1100, once:true}});
+        triggers.push({x:c + 290, w:20, actions:[{do:'start', hazard:h}]});
+        c += 700; break;
+      }
+      case 'riser': {
+        // a wall shoots up out of the floor in front of you
+        P(ground(c, 700));
+        const w = P({x:c + 400, y:G, w:60, h:900 - G + 110, type:'solid'});
+        triggers.push({x:c + 250, w:20, actions:[{do:'slide', plat:w, to:{y:G - 110}, dur:0.12}]});
+        route.push({jumpAt:c + 275}); c += 700; break;
+      }
     }
+    segs.push({x0, x1:c, kind});
   });
   const chaser = def.chase ? H({type:'chaser', x:-2400, y:0, w:2400, h:900, startX:-150, stopX:c - 100, speed:def.chase}) : -1;
   if(chaser >= 0) triggers.push({x:330, w:20, actions:[{do:'start', hazard:chaser}, {do:'toast', text:'RUN.'}]});
   let goal;
-  if(def.exit === 'collapse'){
+  const exitX0 = c;
+  if(def.exit === 'runaway'){
+    // the door hops away twice, leaving a spike where it stood each time
+    P(ground(c, 1500));
+    const s1 = H({x:c + 458, y:G-22, w:44, h:22, type:'hiddenSpike'});
+    const s2 = H({x:c + 908, y:G-22, w:44, h:22, type:'hiddenSpike'});
+    triggers.push({x:c + 300, w:20, actions:[{do:'moveGoal', to:{x:c + 900, y:G-100}}, {do:'reveal', hazard:s1}]});
+    triggers.push({x:c + 750, w:20, actions:[{do:'moveGoal', to:{x:c + 1330, y:G-100}}, {do:'reveal', hazard:s2}]});
+    goal = {x:c + 450, y:G-100, w:70, h:100, type:'normal'};
+    route.push({jumpAt:c + 360}, {jumpAt:c + 810});
+    c += 1500;
+  } else if(def.exit === 'collapse'){
     P(ground(c, 400));
     const fall = P(ground(c + 400, 240));
     P(ground(c + 640, 220));
@@ -678,12 +533,14 @@ function buildLevel(def){
     goal = {x:c + 400, y:G-100, w:70, h:100, type:def.exit === 'fake' ? 'fake' : 'normal', fakeCount:1};
     c += 600;
   }
+  segs.push({x0:exitX0, x1:c, kind:'exit-' + (def.exit || 'plain')});
   route.push({until:'false'});
   return {
     id:def.id, name:def.name, subtitle:def.subtitle || '',
+    segs, learn:def.learn || [], hints:def.hints || {},
     width:c, height:900, spawn:{x:90, y:G-62},
     platforms:plats, hazards, triggers, checkpoints, goal,
-    annotations: def.taunt ? [{x:70, y:470, text:def.taunt}] : [],
+    annotations: def.taunt ? [{x:70, y:470, text:def.taunt, touchText:def.tauntTouch}] : [],
     deathMessages: def.deathMessages || [],
     completionMessage: def.completionMessage || '',
     route
@@ -691,49 +548,87 @@ function buildLevel(def){
 }
 
 [
-  {id:9, name:'CRUMBLE', taunt:'keep moving.', segments:['tiles:4:100:60','crumble:200:120','gap:225','tiles:5:100:50','island:205:110','fake','tiles:6:90:45','crumble:205:110','ambush:150','gap:230'], exit:'plain',
-   deathMessages:['You hesitated. It crumbled.','Floors are temporary.','You landed. It left.'], completionMessage:'You never let the ground get comfortable.'},
-  {id:10, name:'RIDE', taunt:'stay low.', segments:['moving:400:ceil','island:210:105','moving:420:ceil','rusher:680','dropceiling','moving:440:ceil','crumble:210:105','ambush:150','gap:240'], exit:'collapse',
-   deathMessages:['Wrong stop.','Do not jump on the ride.','The ceiling came to you.'], completionMessage:'Please exit the ride safely.'},
-  {id:11, name:'SAW MILL', taunt:'timing.', segments:['saw:320','crumble:210:105','vsaw','stalactites:2','saw:340','ambush:150','vsaw','island:215:100','popup','gap:240'], exit:'fake',
-   deathMessages:['Sliced.','Wait for it. Then go. Then really go.'], completionMessage:'All limbs accounted for.'},
-  {id:12,  name:'LEAP OF FAITH', taunt:'mind the gaps.', segments:['gap:220','island:200:120','ambush:150','island:205:110','spikes:1','popup','gap:230','crumble:200:120','step','island:210:105','gap:235'], exit:'plain',
+  // ---- 1-5: one new idea per level, taught with a card, then turned against you ----
+  {id:1, name:'FIRST STEPS', taunt:'← → move · ↑ jump', tauntTouch:'hold ← → · tap JUMP',
+   learn:[{t:'SPIKES', d:'Red means death. Jump over it. Hold jump to go higher.'}, {t:'THE EXIT', d:'Reach the door to clear the level. If it lets you.'}],
+   segments:['spikes:1','gap:150','spikes:2','step','gap:170'], exit:'runaway',
+   deathMessages:['The door had other plans.','It moved. Obviously.','Exits are suggestions.'], completionMessage:'Lesson one: the exit is never where it says it is.'},
+  {id:2, name:'CRUMBLE', taunt:'keep moving.',
+   learn:[{t:'CRUMBLING FLOOR', d:'Cracks red, then drops. Never stop on it.'}],
+   segments:['tiles:3:120:120','gap:180','tiles:4:110:80','spikes:1','crumble:180:140','tiles:5:100:60','gap:190'], exit:'plain',
+   deathMessages:['You trusted the floor.','You stopped. It noticed.','It was never going to hold.'], completionMessage:'Nothing under you is permanent.'},
+  {id:3, name:'PEEKABOO', taunt:'look closer.',
+   learn:[{t:'HIDDEN SPIKES', d:'Some spikes wait under the floor until you get close.'}, {t:'LYING DOORS', d:'Some doors push you back. Walk in again.'}],
+   segments:['spikes:1','hidden','gap:190','popup','tiles:4:100:70','ambush:140','hidden','gap:200'], exit:'fake',
+   deathMessages:['That was not there.','Now you see it.','It was there the whole time.'], completionMessage:'You stopped trusting your eyes.'},
+  {id:4, name:'MACHINES', taunt:'timing.',
+   learn:[{t:'SAWS', d:'They patrol back and forth. Go when they turn away.'}, {t:'CRUSHERS', d:'They drop when you get close. Let them land, then climb on.'}],
+   segments:['saw:240','hidden','crusher','gap:200','vsaw','crumble:190:130','saw:270','popup','crusher','gap:205'], exit:'fake',
+   deathMessages:['Sliced.','Flattened.','Wait for it. Then really go.'], completionMessage:'All limbs accounted for.'},
+  {id:5, name:'RUN', chase:345,
+   learn:[{t:'THE WALL', d:'It chases you through the whole level. Do not stop. Ever.'}],
+   segments:['gap:200','tiles:4:100:60','spikes:2','island:200:130','hidden','crumble:195:130','tiles:5:100:50','ambush:145','gap:210'], exit:'plain',
+   deathMessages:['It does not get tired.','You hesitated.','Momentum is everything.'], completionMessage:'You outran it. This time.'},
+  // ---- 6-10: no mercy ----
+  {id:6, name:'BUTTER', taunt:'slippery.',
+   learn:[{t:'SLIDING FLOOR', d:'The floor ahead slides away as you reach it.'}, {t:'RUSHING SPIKES', d:'A spike charges at you. Jump it when it is close.'}, {t:'RUNNING DOOR', d:'The floor under the door can fall. Then the door runs.'}],
+   segments:['slide:220','rusher:600','slide:230','tiles:5:100:50','rusher:640','crumble:200:120','ambush:150','popup','slide:235','gap:220'], exit:'collapse',
+   deathMessages:['It slid. You did not.','It was coming the whole time.','Floors move here.'], completionMessage:'Buttered. Not toasted.'},
+  {id:7, name:'LOW BLOW', taunt:'small jumps.',
+   learn:[{t:'LOW CEILINGS', d:'Spikes above you. Tap jump for a tiny hop.'}, {t:'DROPPING CEILING', d:'Some ceilings come down to meet you.'}, {t:'RIDES', d:'Moving platforms carry you. Stand still on them.'}],
+   segments:['ceiling','gap:210','dropceiling','moving:420:ceil','rusher:660','ceiling','crumble:205:115','dropceiling','popup','gap:225'], exit:'collapse',
+   deathMessages:['Too much jump.','The ceiling bites.','Short hop. SHORT.'], completionMessage:'You learned restraint.'},
+  {id:8, name:'TRAPDOOR', taunt:'solid ground.',
+   learn:[{t:'TRAPDOORS', d:'Normal-looking floor that drops out from under you.'}, {t:'SKY SPIKES', d:'Spikes fall out of the sky onto where you are going.'}],
+   segments:['trapdoor:200','skyspike','trapdoor:210','crumble:205:110','skyspike','ambush:150','trapdoor:220','dropceiling','rusher:680','popup','gap:230'], exit:'fake',
+   deathMessages:['The floor had a door in it.','Look up. Too late.','Solid ground. Allegedly.'], completionMessage:'You walk like you expect the floor to leave. Good.'},
+  {id:9, name:'MIRROR', taunt:'do as I say.',
+   learn:[{t:'REVERSED CONTROLS', d:'In the red zone left is right and right is left.'}, {t:'JUMPING SPIKES', d:'Some spikes jump when you jump. Do not.'}],
+   segments:['leaper','trapdoor:210','reverse:600','skyspike','leaper','crumble:210:105','ambush:150','reverse:650','tiles:5:90:45','leaper','dropceiling','gap:235'], exit:'collapse',
+   deathMessages:['It jumped too.','Left. No. Right. No.','You reacted. It predicted.'], completionMessage:'You learned to do nothing. Impressive.'},
+  {id:10, name:'GHOST', taunt:'trust nothing you see.',
+   learn:[{t:'INVISIBLE FLOOR', d:'Some floor is there even when you cannot see it.'}, {t:'FAKE FLOOR', d:'Some floor you can see is not there.'}, {t:'RISING WALLS', d:'Walls shoot up out of the ground. Jump them.'}],
+   segments:['invisible:230','fake','riser','trapdoor:220','skyspike','leaper','reverse:650','crumble:215:100','invisible:240','ambush:155','stalactites:2','rusher:700','dropceiling','riser','gap:240'], exit:'collapse',
+   deathMessages:['That floor was real. The other one was not.','Seeing is not believing.','Ten levels in and still trusting.'], completionMessage:'You walked on nothing and lived. It only gets worse.'},
+  {id:11,  name:'LEAP OF FAITH', taunt:'mind the gaps.', segments:['gap:220','island:200:120','leaper','ambush:150','island:205:110','crumble:215:100','spikes:1','popup','skyspike','gap:230','crumble:200:120','popup','leaper','step','island:210:105','gap:235'], exit:'plain',
    deathMessages:['The landing moved. Not you.','Jump earlier. No, later.','That spike was not there. Now it is.'], completionMessage:'Faith rewarded. For now.'},
-  {id:13, name:'RUSH HOUR', taunt:'look ahead.', segments:['rusher:620','island:205:110','rusher:650','ambush:150','popup','rusher:680','crumble:205:110','spikes:2','rusher:700','gap:235'], exit:'fake',
+  {id:12, name:'SAW MILL', taunt:'timing.', segments:['saw:320','crumble:210:105','skyspike','vsaw','stalactites:2','popup','saw:340','trapdoor:215','ambush:150','vsaw','ambush:155','island:215:100','popup','gap:240'], exit:'fake',
+   deathMessages:['Sliced.','Wait for it. Then go. Then really go.'], completionMessage:'All limbs accounted for.'},
+  {id:13, name:'RUSH HOUR', taunt:'look ahead.', segments:['rusher:620','island:205:110','trapdoor:220','rusher:650','ambush:150','ambush:155','popup','skyspike','rusher:680','crumble:205:110','reverse:650','spikes:2','rusher:700','gap:235'], exit:'fake',
    deathMessages:['It was in a hurry.','Spikes have places to be.','Rush hour never ends.'], completionMessage:'Traffic survived.'},
-  {id:14, name:'GHOST FLOOR', taunt:'trust nothing you see.', segments:['invisible:240','ambush:150','slide:235','island:210:105','popup','invisible:250','fake','crumble:210:105','hidden','reverse:600','gap:240'], exit:'collapse',
+  {id:14, name:'GHOST FLOOR', taunt:'trust nothing you see.', segments:['invisible:240','ambush:150','popup','slide:235','island:210:105','leaper','popup','invisible:250','trapdoor:220','fake','crumble:210:105','crumble:220:95','hidden','reverse:600','gap:240'], exit:'collapse',
    deathMessages:['That floor was real. The other one was not.','Seeing is not believing.'], completionMessage:'You walked on nothing and lived.'},
-  {id:15, name:'SLIP', taunt:'the floor is shy.', segments:['slide:230','popup','slide:235','crumble:205:110','reverse:600','slide:240','ambush:150','island:210:105','tiles:5:100:45','slide:245'], exit:'fake',
+  {id:15, name:'SLIP', taunt:'the floor is shy.', segments:['slide:230','popup','skyspike','slide:235','crumble:205:110','popup','reverse:600','trapdoor:215','slide:240','ambush:150','ambush:155','island:210:105','tiles:5:100:45','slide:245'], exit:'fake',
    deathMessages:['It slid. You did not.','Left is right now.','Floors move here.'], completionMessage:'You kept your footing. Barely.'},
-  {id:16, name:'LOW CEILING', taunt:'short hops.', segments:['ceiling','dropceiling','island:210:105','ceiling','reverse:600','dropceiling','rusher:680','ceiling','crumble:215:100','gap:240'], exit:'fake',
+  {id:16, name:'LOW CEILING', taunt:'short hops.', segments:['ceiling','dropceiling','leaper','island:210:105','ceiling','crumble:215:100','reverse:600','skyspike','dropceiling','rusher:680','popup','ceiling','crumble:215:100','gap:240'], exit:'fake',
    deathMessages:['Too much jump.','The ceiling bites.','It was higher a second ago.'], completionMessage:'You learned restraint. Mostly.'},
-  {id:17, name:'DESCENT', taunt:'down we go.', segments:['rusher:690','crumble:215:100','moving:440:ceil','dropceiling','slide:240','vsaw','ambush:150','reverse:650','tiles:6:90:40','island:215:100','gap:245'], exit:'collapse',
+  {id:17, name:'DESCENT', taunt:'down we go.', segments:['rusher:690','crumble:215:100','trapdoor:220','moving:440:ceil','dropceiling','ambush:155','slide:240','vsaw','skyspike','ambush:150','reverse:650','reverse:650','tiles:6:90:40','island:215:100','gap:245'], exit:'collapse',
    deathMessages:['Deeper.','It only gets worse.'], completionMessage:'Still descending. Good luck.'},
-  {id:18, name:'BLIND FAITH', taunt:'close your eyes.', segments:['ambush:155','invisible:250','slide:245','popup','invisible:250','fake','crumble:220:95','hidden','reverse:700','slide:245','ambush:160','island:220:95','gap:245'], exit:'collapse',
+  {id:18, name:'BLIND FAITH', taunt:'close your eyes.', segments:['ambush:155','invisible:250','popup','slide:245','popup','invisible:250','leaper','fake','crumble:220:95','trapdoor:220','hidden','reverse:700','slide:245','crumble:220:95','ambush:160','island:220:95','gap:245'], exit:'collapse',
    deathMessages:['You could not see it. Now you know.','Memorize. Repeat.'], completionMessage:'Faith, but verified.'},
-  {id:19, name:'MIXED SIGNALS', segments:['reverse:700','slide:240','dropceiling','saw:330','ambush:150','fake','crumble:215:100','stalactites:3','tiles:5:90:45','popup','gap:240'], exit:'collapse',
-   deathMessages:['Every rule at once.','Read the level, not your hopes.','Left. No. Right. No.'], completionMessage:'Signals decoded.'},
-  {id:20, name:'QUICKSAND', taunt:'faster.', segments:['tiles:6:90:35','slide:245','crumble:220:95','tiles:6:90:30','fake','reverse:700','tiles:6:90:30','ambush:160','slide:245','crumble:225:95','popup','gap:245'], exit:'collapse',
-   deathMessages:['Swallowed.','The floor was hungry.'], completionMessage:'You never stood still.'},
-  {id:21, name:'CRUSHER ROW', taunt:'look up.', segments:['crusher','stalactites:3','crumble:215:100','crusher','ambush:155','tiles:5:90:40','crusher','reverse:650','stalactites:3','popup','gap:245'], exit:'collapse',
+  {id:19, name:'CRUSHER ROW', taunt:'look up.', segments:['crusher','stalactites:3','trapdoor:220','crumble:215:100','crusher','ambush:155','ambush:155','tiles:5:90:40','skyspike','crusher','reverse:650','reverse:650','stalactites:3','popup','gap:245'], exit:'collapse',
    deathMessages:['Flattened.','Patience. Then panic.'], completionMessage:'Still three-dimensional.'},
-  {id:22, name:'CHASE', chase:360, segments:['gap:225','popup','tiles:4:100:50','island:205:110','ambush:150','stalactites:2','crumble:205:110','gap:235','hidden'], exit:'plain',
+  {id:20, name:'QUICKSAND', taunt:'faster.', segments:['tiles:6:90:35','slide:245','leaper','crumble:220:95','tiles:6:90:30','crumble:215:100','fake','reverse:700','tiles:6:90:30','skyspike','ambush:160','slide:245','popup','crumble:225:95','popup','gap:245'], exit:'collapse',
+   deathMessages:['Swallowed.','The floor was hungry.'], completionMessage:'You never stood still.'},
+  {id:21, name:'CHASE', chase:360, segments:['gap:225','popup','trapdoor:220','tiles:4:100:50','leaper','island:205:110','ambush:150','popup','stalactites:2','ambush:155','crumble:205:110','gap:235','hidden'], exit:'plain',
    deathMessages:['It caught up.','No time to think.','Slower is deader.'], completionMessage:'You outran it again.'},
-  {id:23, name:'GRINDER', segments:['saw:340','crumble:220:95','crusher','vsaw','stalactites:3','saw:350','ambush:160','crusher','reverse:650','vsaw','island:220:95','dropceiling','gap:245'], exit:'collapse',
+  {id:22, name:'MIXED SIGNALS', segments:['reverse:700','slide:240','skyspike','dropceiling','saw:330','popup','ambush:150','fake','trapdoor:215','crumble:215:100','stalactites:3','ambush:155','tiles:5:90:45','popup','gap:240'], exit:'collapse',
+   deathMessages:['Every rule at once.','Read the level, not your hopes.','Left. No. Right. No.'], completionMessage:'Signals decoded.'},
+  {id:23, name:'GRINDER', segments:['saw:340','crumble:220:95','popup','crusher','vsaw','stalactites:3','leaper','saw:350','ambush:160','trapdoor:220','crusher','reverse:650','vsaw','crumble:220:95','island:220:95','dropceiling','gap:245'], exit:'collapse',
    deathMessages:['Ground up.','Machines do not miss.'], completionMessage:'You beat the machine.'},
-  {id:24, name:'GAUNTLET', segments:['slide:245','crumble:225:90','rusher:720','moving:460:ceil','crusher','dropceiling','reverse:700','saw:350','tiles:6:90:30','ambush:160','island:225:90','popup','gap:245'], exit:'collapse',
-   deathMessages:['The gauntlet wins this round.','Every trap, in order.'], completionMessage:'Gauntlet run.'},
-  {id:25, name:'NEEDLE', taunt:'tap. tap. tap.', segments:['dropceiling','spikes:2','ceiling','popup','dropceiling','crumble:220:100','ceiling','ambush:155','reverse:650','dropceiling','island:220:95','fake'], exit:'collapse',
+  {id:24, name:'NEEDLE', taunt:'tap. tap. tap.', segments:['dropceiling','spikes:2','leaper','ceiling','popup','crumble:215:100','dropceiling','crumble:220:100','ceiling','skyspike','ambush:155','reverse:650','popup','dropceiling','island:220:95','fake'], exit:'collapse',
    deathMessages:['Pierced.','Smaller jumps. Smaller.'], completionMessage:'Threaded.'},
-  {id:26, name:'NO MERCY', segments:['fake','dropceiling','crumble:225:95','vsaw','slide:245','rusher:720','reverse:700','moving:460:ceil','tiles:6:90:30','crusher','ambush:160','island:225:90','stalactites:3','popup','gap:245'], exit:'collapse',
+  {id:25, name:'GAUNTLET', segments:['slide:245','crumble:225:90','skyspike','rusher:720','moving:460:ceil','crusher','popup','dropceiling','reverse:700','trapdoor:215','saw:350','tiles:6:90:30','ambush:160','ambush:155','island:225:90','popup','gap:245'], exit:'collapse',
+   deathMessages:['The gauntlet wins this round.','Every trap, in order.'], completionMessage:'Gauntlet run.'},
+  {id:26, name:'NO MERCY', segments:['fake','dropceiling','crumble:225:95','trapdoor:220','vsaw','slide:245','rusher:720','ambush:155','reverse:700','moving:460:ceil','skyspike','tiles:6:90:30','crusher','ambush:160','reverse:650','island:225:90','stalactites:3','popup','gap:245'], exit:'collapse',
    deathMessages:['No mercy. As advertised.','You were warned.'], completionMessage:'Mercy was never needed.'},
-  {id:27, name:'STAMPEDE', chase:365, segments:['rusher:700','crumble:220:95','rusher:720','dropceiling','tiles:5:90:35','ambush:160','rusher:720','stalactites:2','island:225:90','gap:245'], exit:'collapse',
+  {id:27, name:'STAMPEDE', chase:365, segments:['rusher:700','crumble:220:95','trapdoor:220','rusher:720','dropceiling','leaper','tiles:5:90:35','popup','ambush:160','rusher:720','ambush:155','stalactites:2','island:225:90','gap:245'], exit:'collapse',
    deathMessages:['Trampled.','Everything is coming at you.'], completionMessage:'The herd thinned.'},
-  {id:28, name:'FLIGHT', chase:368, segments:['tiles:5:90:35','dropceiling','crumble:225:90','rusher:720','ambush:160','tiles:5:90:30','ceiling','slide:245','island:225:90','stalactites:2','gap:245'], exit:'collapse',
+  {id:28, name:'FLIGHT', chase:368, segments:['tiles:5:90:35','dropceiling','trapdoor:220','crumble:225:90','rusher:720','leaper','ambush:160','tiles:5:90:30','popup','ceiling','slide:245','ambush:155','island:225:90','stalactites:2','gap:245'], exit:'collapse',
    deathMessages:['Flight denied.','Faster. Smaller. Now.'], completionMessage:'Escaped. Again.'},
-  {id:29, name:'LAST BREATH', chase:370, segments:['rusher:720','crumble:225:90','tiles:6:90:30','dropceiling','slide:245','ambush:160','island:230:90','fake','rusher:720','ceiling','popup','crumble:230:90','gap:245'], exit:'collapse',
+  {id:29, name:'LAST BREATH', chase:370, segments:['rusher:720','crumble:225:90','tiles:6:90:30','dropceiling','trapdoor:225','slide:245','ambush:160','island:230:90','fake','popup','rusher:720','ceiling','popup','crumble:230:90','gap:245'], exit:'collapse',
    deathMessages:['Out of breath.','One more level after this. If you live.'], completionMessage:'Breathe. Then do the last one.'},
-  {id:30, name:'DESKMAN', taunt:'this is the end.', segments:['ambush:160','crumble:230:90','slide:245','rusher:720','moving:460:ceil','crusher','dropceiling','island:230:90','reverse:750','saw:360','tiles:6:90:25','fake','vsaw','stalactites:3','crumble:235:85','slide:245','dropceiling','popup','ambush:165','island:235:85','rusher:740','crumble:240:85','gap:245'], exit:'collapse',
+  {id:30, name:'DESKMAN', taunt:'this is the end.', segments:['ambush:160','crumble:230:90','slide:245','rusher:720','moving:460:ceil','crusher','skyspike','dropceiling','island:230:90','reverse:750','saw:360','tiles:6:90:25','leaper','fake','vsaw','stalactites:3','crumble:235:85','slide:245','trapdoor:225','dropceiling','popup','ambush:165','island:235:85','rusher:740','crumble:240:85','gap:245'], exit:'collapse',
    deathMessages:['Run. Fail. Repeat.','The final lie.','Everything you learned. Everything.'], completionMessage:'You beat deskman.fun. All thirty levels. Nothing here can stop you now.'}
 ].forEach(def=>LEVELS.push(buildLevel(def)));
 
@@ -843,10 +738,74 @@ function loadLevel(index){
   checkpointIndex = -1;
   attemptDeaths = 0;
   attemptTime = 0;
+  segDeaths = {};
   spawnLevel(true);
   updateHud();
   showLevelToast(LEVELS[currentLevelIndex]);
+  showLearnCard(LEVELS[currentLevelIndex]);
   maybeRotateHint();
+}
+
+/* =========================================================================
+   TEACHING CARDS AND HINTS
+   A level's new elements are named on a card when it starts. Dying twice
+   at the same obstacle shows that obstacle's hint until you get past it.
+========================================================================= */
+let segDeaths = {};
+let tipTimer = null, tipSeg = null;
+function showTip(badge, items, secs, cls){
+  const box = $('tipBox'), body = $('tipBody');
+  $('tipBadge').textContent = badge;
+  body.textContent = '';
+  for(const it of items){
+    const row = document.createElement('div');
+    row.className = 'tip-row';
+    if(it.t){ const b = document.createElement('b'); b.textContent = it.t; row.appendChild(b); }
+    const sp = document.createElement('span'); sp.textContent = it.d; row.appendChild(sp);
+    body.appendChild(row);
+  }
+  box.className = 'tip-box show ' + (cls || '');
+  clearTimeout(tipTimer);
+  tipTimer = secs ? setTimeout(hideTip, secs*1000) : null;
+}
+function hideTip(){ clearTimeout(tipTimer); tipTimer = null; tipSeg = null; $('tipBox').className = 'tip-box'; }
+function showLearnCard(data){
+  hideTip();
+  if(!data.learn || !data.learn.length) return;
+  const id = data.id;
+  setTimeout(()=>{
+    if(gameState === 'playing' && LEVELS[currentLevelIndex].id === id && !tipSeg)
+      showTip(data.learn.length > 1 ? 'NEW IN THIS LEVEL' : 'NEW', data.learn, 4 + 2.2*data.learn.length, 'learn');
+  }, 1300);
+}
+function segmentAt(data, x){
+  const segs = data.segs || [];
+  for(let i=0;i<segs.length;i++) if(x >= segs[i].x0 && x < segs[i].x1) return i;
+  return segs.length ? (x < segs[0].x0 ? 0 : segs.length - 1) : -1;
+}
+function hintFor(data, key){
+  return (data.hints && data.hints[key]) || SEG_HINTS[key] || '';
+}
+function noteDeathForHints(ls, reason){
+  const data = ls.data, p = ls.player;
+  let key, segIdx = -1;
+  if(reason === 'chaser'){ key = 'chase'; }
+  else {
+    segIdx = segmentAt(data, p.x + p.w/2);
+    if(segIdx < 0) return;
+    key = data.segs[segIdx].kind;
+  }
+  const k = reason === 'chaser' ? 'chase' : 's' + segIdx;
+  segDeaths[k] = (segDeaths[k] || 0) + 1;
+  if(segDeaths[k] < 2) return;
+  const text = hintFor(data, key);
+  if(!text) return;
+  tipSeg = segIdx >= 0 ? data.segs[segIdx] : {x1:Infinity};
+  showTip('HINT', [{d:text}], 0, 'hint');
+}
+// Hide a hint once the player is past the obstacle it is about.
+function updateTip(ls){
+  if(tipSeg && ls.player.x > tipSeg.x1 + 40) hideTip();
 }
 
 // Phones held upright see a narrower world; suggest landscape once per session.
@@ -1342,6 +1301,7 @@ function updatePlayer(ls, dt){
   }
 
   updateGoal(ls, dt);
+  updateTip(ls);
   updateAnimState(p, dt, moveDir);
 }
 
@@ -1526,6 +1486,7 @@ function killPlayer(reason){
   vibrate(HAPTIC.strong);
   if(!save.settings.reducedMotion){ camera.shake = Math.max(camera.shake, 10); ls.flash = 1; }
   updateHud();
+  noteDeathForHints(ls, reason);
   const pool = (ls.data.deathMessages || []).concat(GLOBAL_DEATH_MESSAGES);
   if(Math.random() < 0.5) showToast(pool[Math.floor(Math.random()*pool.length)]);
 }
@@ -1535,6 +1496,7 @@ function triggerWin(){
   const ls = levelState, data = ls.data, p = ls.player;
   p.won = true; p.vx = 0;
   gameState = 'won';
+  hideTip();
   ls.winT = 0;
   if(save.completedLevels.indexOf(data.id) < 0) save.completedLevels.push(data.id);
   const isFinale = currentLevelIndex + 1 >= LEVELS.length;
@@ -1570,6 +1532,7 @@ function triggerWin(){
 function advanceAfterWin(){
   if(gameState !== 'won') return;
   hideClearBanner();
+  hideTip();
   if(currentLevelIndex + 1 < LEVELS.length){ loadLevel(currentLevelIndex + 1); return; }
   // finished the whole game: back to the start screen
   gameState = 'menu';
@@ -1876,7 +1839,7 @@ function drawHazards(ls){
     if(hz.type === 'spike'){
       if(hz.flip) drawDownTeeth(hz.cx, hz.cy, hz.w, hz.h, COL.red);
       else drawSpikeTeeth(hz.cx, hz.cy, hz.w, hz.h);
-      if(hz.path && hz.idle && hz.path.once){
+      if(hz.path && hz.idle && hz.path.once && !hz.noTrack){
         // a resting "rusher": faint track shows where it will go
         ctx.strokeStyle = 'rgba(224,50,60,0.18)'; ctx.lineWidth = 3; ctx.setLineDash([6, 8]);
         ctx.beginPath(); ctx.moveTo(hz.path.x1+hz.w/2, hz.path.y1+hz.h+4); ctx.lineTo(hz.path.x2+hz.w/2, hz.path.y2+hz.h+4); ctx.stroke();

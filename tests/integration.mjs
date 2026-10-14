@@ -229,6 +229,26 @@ export async function integration(browser, base) {
     await ctx.close();
   }
 
+  /* ---- 4b. "New element" card at level start, hint after two deaths at one obstacle ---- */
+  {
+    const ctx = await browser.newContext({viewport: {width: 1280, height: 720}});
+    const p = await ctx.newPage();
+    await p.goto(base + '/preview/full.html?debug=1');
+    await p.evaluate(() => window.DeskmanFun.debug.start(7));
+    await p.waitForTimeout(1900);
+    const learn = await p.evaluate(() => ({cls: document.getElementById('tipBox').className, badge: document.getElementById('tipBadge').textContent, text: document.getElementById('tipBody').textContent}));
+    check('level start: a card names the new elements (level 8: trapdoors, sky spikes)', learn.cls.includes('show') && learn.badge.startsWith('NEW') && learn.text.includes('TRAPDOORS') && learn.text.includes('SKY SPIKES'), learn);
+    const hint = await p.evaluate(async () => {
+      const D = window.DeskmanFun.debug; D.setLoopPaused(true);
+      const one = () => { D.press('right', true); for (let i = 0; i < 1200 && D.state() === 'playing'; i++) D.step(1); D.press('right', false); const st = D.state(); D.respawn(); return st; };
+      const a = one(); const after1 = document.getElementById('tipBadge').textContent;
+      const b = one();
+      return {a, b, after1, badge: document.getElementById('tipBadge').textContent, text: document.getElementById('tipBody').textContent, cls: document.getElementById('tipBox').className};
+    });
+    check('hint: after two deaths at the same trap its hint appears', hint.a === 'dead' && hint.b === 'dead' && hint.after1 !== 'HINT' && hint.badge === 'HINT' && /floor drops/i.test(hint.text) && hint.cls.includes('show'), hint);
+    await ctx.close();
+  }
+
   /* ---- 5. Save migration and corruption ---- */
   {
     const ctx = await browser.newContext();
@@ -268,6 +288,11 @@ export async function integration(browser, base) {
     await p.click('#btnPlay');
     const lvlAfter = await p.evaluate(() => window.DeskmanFun.debug.level().data.id);
     check('new levels: finishing the old 5 unlocks level 6 and Play continues there', JSON.stringify(tiles8) === JSON.stringify(Array.from({length: 30}, (_, i) => i < 6)) && lvlAfter === 6, {tiles8, lvlAfter});
+    // 2.0.x best times were set on different maps: archived, never deleted; unlocks kept.
+    await p.evaluate(() => localStorage.setItem('deskmanfun_save_v1', JSON.stringify({version: 2, unlockedLevel: 9, completedLevels: [1, 2, 3, 4, 5, 6, 7, 8], totalDeaths: 50, levelStats: {'1': {clears: 3, bestTime: 4.2, bestDeaths: 0}}, settings: {}})));
+    await p.reload(); await p.waitForTimeout(100);
+    const mig = await p.evaluate(() => { const D = window.DeskmanFun.debug; D.start(0); D.step(2); return JSON.parse(localStorage.getItem('deskmanfun_save_v1')); });
+    check('levels 2.1: old best times archived (not deleted), unlocks and completions kept', mig.unlockedLevel === 9 && mig.completedLevels.length === 8 && mig.statsSeason === 2 && Object.keys(mig.levelStats).length === 0 && mig.archivedLevelStats && mig.archivedLevelStats.season1['1'].bestTime === 4.2, mig);
     await p.evaluate(() => localStorage.setItem('deskmanfun_save_v1', '{not json'));
     await p.reload(); await p.waitForTimeout(100);
     check('save: corrupted data falls back to defaults without errors', errs.length === 0 && (await p.evaluate(() => window.DeskmanFun.getProgress().unlockedLevel)) === 1, errs);
