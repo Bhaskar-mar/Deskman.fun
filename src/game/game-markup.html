@@ -1,0 +1,205 @@
+<div id="app" class="dgm-app">
+  <div id="stage">
+    <canvas id="gameCanvas" aria-label="deskman.fun game area" role="img"></canvas>
+
+    <div id="hud">
+      <div class="hud-top">
+        <div class="logo">
+          <div class="title">deskman<span>.fun</span></div>
+          <div class="tagline">RUN. FAIL. REPEAT.</div>
+        </div>
+        <div class="level-card" id="levelCard">
+          <div class="lvl" id="levelLabel">LEVEL 1</div>
+          <div class="sub" id="levelSub">Trust</div>
+        </div>
+        <div class="top-buttons">
+          <button type="button" class="icon-btn" id="btnRestart" title="Restart level (R)" aria-label="Restart level">&#8635;</button>
+          <button type="button" class="icon-btn" id="btnFullscreen" title="Fullscreen" aria-label="Toggle fullscreen" hidden>&#x26F6;</button>
+          <button type="button" class="icon-btn" id="btnAccount" title="Account" aria-label="Account" hidden>&#128100;</button>
+          <button type="button" class="icon-btn" id="btnSettings" title="Settings" aria-label="Settings">&#9881;</button>
+          <button type="button" class="icon-btn" id="btnPause" title="Pause (Esc)" aria-label="Pause">&#10074;&#10074;</button>
+        </div>
+      </div>
+      <div class="progress-pill"><span id="progressText">1 / 30</span><span class="deaths" id="deathsText">Deaths: 0</span></div>
+      <div class="world-toast" id="worldToast" aria-live="polite"><span class="w1" id="worldToastSub">LEVEL 1</span><span id="worldToastMain">TRUST</span></div>
+      <div class="toast-msg" id="toastMsg" aria-live="polite"></div>
+      <div class="tip-box" id="tipBox" aria-live="polite"><span class="tip-badge" id="tipBadge">NEW</span><div class="tip-body" id="tipBody"></div></div>
+      <div class="clear-banner" id="clearBanner" aria-live="polite"><span class="cb-title" id="clearTitle">LEVEL 1 CLEAR</span><span class="cb-stats" id="clearStats"></span><span class="cb-hint" id="clearHint"></span></div>
+    </div>
+
+    <div class="controls" id="touchControls">
+      <div class="dpad" id="dpad">
+        <button type="button" class="ctrl-btn" id="btnLeft" aria-label="Move left">&#8592;</button>
+        <button type="button" class="ctrl-btn" id="btnRight" aria-label="Move right">&#8594;</button>
+      </div>
+      <button type="button" class="jump-btn" id="btnJump" aria-label="Jump">&#8593;<span>JUMP</span></button>
+    </div>
+
+    <!-- Pause overlay -->
+    <div class="overlay dim" id="pauseOverlay" role="dialog" aria-modal="true" aria-label="Paused">
+      <div class="card">
+        <h2>Paused</h2>
+        <div class="row col">
+          <button type="button" class="btn primary" id="btnResume">RESUME</button>
+          <button type="button" class="btn ghost" id="btnPauseRestart">RESTART LEVEL</button>
+          <button type="button" class="btn ghost" id="btnPauseSettings">SETTINGS</button>
+          <button type="button" class="btn ghost" id="btnPauseMenu">LEVEL SELECT</button>
+          <button type="button" class="btn ghost" id="btnPauseBoard" hidden>LEADERBOARD</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings overlay -->
+    <div class="overlay dim" id="settingsOverlay" role="dialog" aria-modal="true" aria-label="Settings">
+      <div class="card">
+        <h2>Settings</h2>
+        <div class="settings-list">
+          <div class="setting-row"><span>Sound Effects</span><button type="button" class="switch" role="switch" aria-checked="false" aria-label="Sound effects" data-setting="sound"><span class="knob"></span></button></div>
+          <div class="setting-row"><span>Music</span><button type="button" class="switch" role="switch" aria-checked="false" aria-label="Music" data-setting="music"><span class="knob"></span></button></div>
+          <div class="setting-row"><span>Vibration</span><button type="button" class="switch" role="switch" aria-checked="false" aria-label="Vibration" data-setting="vibration"><span class="knob"></span></button></div>
+          <div class="setting-row"><span>Reduced Motion</span><button type="button" class="switch" role="switch" aria-checked="false" aria-label="Reduced motion" data-setting="reducedMotion"><span class="knob"></span></button></div>
+        </div>
+        <button type="button" class="btn primary" id="btnCloseSettings">DONE</button>
+      </div>
+    </div>
+
+    <!-- Level select -->
+    <div class="overlay dim" id="menuOverlay" role="dialog" aria-modal="true" aria-label="Select level">
+      <div class="card wide">
+        <h2>Select Level</h2>
+        <div class="level-select-grid" id="levelGrid"></div>
+        <button type="button" class="btn ghost" id="btnCloseMenu">CLOSE</button>
+      </div>
+    </div>
+
+    <!-- Account: sign in / create account / signed-in view -->
+    <div class="overlay dim" id="accountOverlay" role="dialog" aria-modal="true" aria-labelledby="accountTitle">
+      <div class="card wide acct">
+        <h2 id="accountTitle">Join the leaderboard</h2>
+        <div id="acctGuest">
+          <p class="acct-sub">Guests can always play. An account saves your progress across devices and puts your times on the leaderboard.</p>
+          <div class="acct-tabs" role="tablist">
+            <button type="button" role="tab" class="acct-tab on" id="tabSignIn" aria-selected="true">Sign in</button>
+            <button type="button" role="tab" class="acct-tab" id="tabRegister" aria-selected="false">Create account</button>
+          </div>
+          <div class="google-area" id="googleArea" hidden>
+            <div id="googleBtn" class="google-btn"></div>
+            <div class="acct-or"><span>or</span></div>
+          </div>
+          <form class="acct-form" id="formSignIn" novalidate>
+            <label>Username or email<input type="text" name="login" autocomplete="username" required></label>
+            <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
+            <button type="submit" class="btn primary">SIGN IN</button>
+          </form>
+          <form class="acct-form" id="formRegister" novalidate hidden>
+            <label>Username<input type="text" name="username" autocomplete="username" minlength="3" maxlength="30" required></label>
+            <label>Email<input type="email" name="email" autocomplete="email" required></label>
+            <label>Password <small>(8+ characters)</small><input type="password" name="password" autocomplete="new-password" minlength="8" required></label>
+            <label class="hp" aria-hidden="true">Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label>
+            <label class="acct-agree"><input type="checkbox" name="agree" required> <span>I am 13 or older and agree to the <a class="lnk-terms" href="#" target="_blank" rel="noopener">Terms of Service</a> and <a class="lnk-privacy" href="#" target="_blank" rel="noopener">Privacy Policy</a>.</span></label>
+            <button type="submit" class="btn primary">CREATE ACCOUNT</button>
+          </form>
+          <div class="acct-google-terms" id="googleTerms" hidden>
+            <label class="acct-agree"><input type="checkbox" id="googleAgree"> <span>I am 13 or older and agree to the <a class="lnk-terms" href="#" target="_blank" rel="noopener">Terms of Service</a> and <a class="lnk-privacy" href="#" target="_blank" rel="noopener">Privacy Policy</a>.</span></label>
+            <button type="button" class="btn primary" id="btnGoogleContinue">CREATE ACCOUNT WITH GOOGLE</button>
+          </div>
+          <p class="acct-msg" id="acctMsg" role="alert"></p>
+          <button type="button" class="btn ghost" id="btnGuest">KEEP PLAYING AS GUEST</button>
+        </div>
+        <div id="acctUser" hidden>
+          <p class="acct-hello">Signed in as <strong id="acctName"></strong></p>
+          <div class="acct-verify" id="acctVerify" hidden>
+            <p>Verify <strong id="acctEmail"></strong> to appear on the leaderboard. Check your inbox (and spam).</p>
+            <button type="button" class="btn ghost" id="btnResend">RESEND EMAIL</button>
+          </div>
+          <p class="acct-msg" id="acctMsg2" role="status"></p>
+          <div class="row">
+            <button type="button" class="btn primary" id="btnAcctBoard">LEADERBOARD</button>
+            <button type="button" class="btn ghost" id="btnSignOut">SIGN OUT</button>
+          </div>
+          <button type="button" class="btn ghost acct-done" id="btnAcctDone">DONE</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Leaderboard -->
+    <div class="overlay dim" id="boardOverlay" role="dialog" aria-modal="true" aria-labelledby="boardTitle">
+      <div class="card wide board">
+        <h2 id="boardTitle">Leaderboard</h2>
+        <label class="board-filter">Show
+          <select id="boardLevel"><option value="0">Overall ranking</option></select>
+        </label>
+        <div class="board-scroll"><table class="board-table"><thead><tr><th>#</th><th>Player</th><th id="boardCol3">Levels</th><th id="boardCol4">Total time</th></tr></thead><tbody id="boardBody"></tbody></table></div>
+        <p class="board-note" id="boardNote"></p>
+        <button type="button" class="btn ghost" id="btnCloseBoard">CLOSE</button>
+      </div>
+    </div>
+
+    <!-- Start screen -->
+    <div id="startScreen">
+      <svg class="start-scene" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice" aria-hidden="true" focusable="false">
+        <defs>
+          <filter id="dmfBlur" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="5"/></filter>
+          <linearGradient id="dmfSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f3eee3"/><stop offset="1" stop-color="#ebe3d2"/></linearGradient>
+        </defs>
+        <rect width="1600" height="900" fill="url(#dmfSky)"/>
+        <circle cx="1360" cy="220" r="66" fill="#f8f3e8"/>
+        <g class="ss-clouds" fill="#e3dacb">
+          <path d="M170 210h150a28 28 0 0 0-26-38 40 40 0 0 0-76-6 30 30 0 0 0-48 44z"/>
+          <path d="M395 420h120a24 24 0 0 0-22-32 34 34 0 0 0-64-4 26 26 0 0 0-34 36z"/>
+          <path d="M1505 190h120a24 24 0 0 0-22-32 34 34 0 0 0-64-4 26 26 0 0 0-34 36z"/>
+        </g>
+        <rect x="0" y="555" width="1600" height="345" fill="#e7dfcd"/>
+        <g fill="#e2d9c8">
+          <path d="M0 520 100 250 210 400 270 330 400 520z"/>
+          <path d="M470 560 580 470 650 520 760 430 900 560z"/>
+          <path d="M1100 560 1230 400 1330 480 1450 380 1600 520v40z"/>
+        </g>
+        <g fill="#d8cfbd">
+          <path d="M150 560 270 370 380 560z"/>
+          <path d="M1280 560 1370 450 1460 560z"/>
+          <rect x="0" y="500" width="180" height="400"/>
+          <rect x="240" y="540" width="140" height="360"/>
+          <rect x="300" y="510" width="62" height="34"/>
+          <rect x="1105" y="545" width="140" height="355"/>
+          <rect x="1085" y="590" width="170" height="310"/>
+          <rect x="1380" y="625" width="130" height="275"/>
+          <rect x="1490" y="425" width="130" height="475"/>
+        </g>
+        <g fill="#cfc5b1">
+          <path d="M25 500l16-34 16 34zM60 500l16-34 16 34zM95 500l16-34 16 34zM130 500l16-34 16 34z"/>
+          <path d="M405 560l13-28 13 28z"/>
+          <path d="M1118 545l14-28 14 28zM1146 545l14-28 14 28zM1174 545l14-28 14 28zM1202 545l14-28 14 28z"/>
+          <path d="M1380 625l16-34 16 34zM1412 625l16-34 16 34zM1444 625l16-34 16 34zM1476 625l16-34 16 34z"/>
+        </g>
+        <g class="ss-saw-chain" stroke="#c9bfab" stroke-width="5" stroke-dasharray="4 5" fill="none"><path d="M1328 385v100"/></g>
+        <g class="ss-saw" transform="translate(1328 515)">
+          <g class="ss-saw-spin" fill="#c4baa5">
+            <circle r="30"/>
+            <path d="M0-40 7-29H-7zM0 40 7 29H-7zM-40 0-29 7V-7zM40 0 29 7V-7zM28-28 25-15 15-25zM-28 28-25 15-15 25zM28 28 15 25 25 15zM-28-28-15-25-25-15z"/>
+            <circle r="9" fill="#ddd4c3"/>
+          </g>
+        </g>
+        <g class="ss-flag"><rect x="1530" y="310" width="8" height="115" fill="#b9ae98"/><path d="M1538 312 1586 334 1538 356z" fill="#e8908f"/></g>
+        <g fill="#2a2724" filter="url(#dmfBlur)" opacity=".86">
+          <path d="M-20 900V660h70v40h40v100h70v40h80v-60h40l30-70 30 70h30v120z"/>
+          <path d="M150 840l38-90 38 90zM226 840l32-70 32 70z"/>
+          <path d="M1620 900V760l-30-70-28 70-28-70-30 70h-40v40h-80l-30-60-30 60h-40v100z"/>
+        </g>
+      </svg>
+      <div class="start-content">
+        <div class="bigtitle">deskman<span>.fun</span><svg class="title-marks" viewBox="0 0 70 70" aria-hidden="true" focusable="false"><path d="M18 6 13 30M44 22 30 38M62 54 40 57"/></svg></div>
+        <div class="bigtag">RUN. FAIL. REPEAT.</div>
+        <canvas id="introCanvas" width="320" height="140"></canvas>
+        <div class="menu-row">
+          <button type="button" class="btn primary" id="btnPlay"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 3.5v17a1 1 0 0 0 1.5.86l14-8.5a1 1 0 0 0 0-1.72l-14-8.5A1 1 0 0 0 6 3.5z"/></svg><span>PLAY</span></button>
+          <button type="button" class="btn ghost" id="btnLevelSelectStart"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="11" width="5" height="10" rx="1.2"/><rect x="9.5" y="4" width="5" height="17" rx="1.2"/><rect x="16" y="8" width="5" height="13" rx="1.2"/></svg><span>LEVELS</span></button>
+          <button type="button" class="btn ghost" id="btnSettingsStart"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill-rule="evenodd" d="M10.3 2h3.4l.5 2.6 1.9.8 2.2-1.5 2.4 2.4-1.5 2.2.8 1.9 2.6.5v3.4l-2.6.5-.8 1.9 1.5 2.2-2.4 2.4-2.2-1.5-1.9.8-.5 2.6h-3.4l-.5-2.6-1.9-.8-2.2 1.5-2.4-2.4 1.5-2.2-.8-1.9L2 13.7v-3.4l2.6-.5.8-1.9-1.5-2.2 2.4-2.4 2.2 1.5 1.9-.8zM12 8.3a3.7 3.7 0 1 0 0 7.4 3.7 3.7 0 0 0 0-7.4z"/></svg><span>SETTINGS</span></button>
+          <button type="button" class="btn ghost" id="btnBoardStart" hidden><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 2h12v2h4v3a5 5 0 0 1-4.6 5A6 6 0 0 1 13 15.9V19h4v3H7v-3h4v-3.1A6 6 0 0 1 6.6 12 5 5 0 0 1 2 7V4h4zm0 4H4v1a3 3 0 0 0 2 2.8zm12 0v3.8A3 3 0 0 0 20 7V6z"/></svg><span>LEADERBOARD</span></button>
+        </div>
+        <p class="account-line" id="accountLine" hidden></p>
+        <p class="start-hint" id="startHint"><kbd>&#8592; &#8594;</kbd> <kbd>A</kbd> <kbd>D</kbd> to move <span class="sep">&middot;</span> <kbd>&#8593;</kbd> / <kbd>W</kbd> / <kbd>Space</kbd> to jump <span class="sep">&middot;</span> <kbd>R</kbd> to restart</p>
+      </div>
+    </div>
+  </div>
+</div>

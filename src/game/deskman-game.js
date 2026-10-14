@@ -1,0 +1,2646 @@
+/*!
+ * deskman.fun — rage-bait platformer engine.
+ * Plain ES2017, no dependencies. Everything is scoped inside this IIFE so the
+ * game can share a WordPress page with other scripts without name clashes.
+ */
+(function(){
+'use strict';
+
+const root = document.getElementById('deskman-fun-root');
+if(!root || root.getAttribute('data-dgm-init')) return;
+root.setAttribute('data-dgm-init','1');
+
+const $ = (id)=>document.getElementById(id);
+const GAME_VERSION = '2.1.0';
+const DEBUG = window.DESKMAN_DEBUG === true;
+
+/* =========================================================================
+   STORAGE
+   The key and the original fields (unlockedLevel, completedLevels,
+   totalDeaths, settings) are unchanged from v1.x so existing progress
+   carries over. New fields are only ever added; unknown fields written by
+   other versions are preserved, and progress is never lowered on load.
+========================================================================= */
+const STORAGE_KEY = 'deskmanfun_save_v1';
+const SAVE_VERSION = 2;
+// Bumped when level layouts change so old best times (set on different
+// maps) are archived instead of compared with new runs. 2 = 2.1.0 levels.
+const STATS_SEASON = 2;
+function defaultSettings(){ return { sound:true, music:true, vibration:true, reducedMotion:false }; }
+function defaultSave(){
+  return {
+    version: SAVE_VERSION,
+    unlockedLevel: 1,
+    completedLevels: [],
+    totalDeaths: 0,
+    levelStats: {},           // { [levelId]: { clears, bestTime, bestDeaths } }
+    statsSeason: STATS_SEASON,
+    settings: defaultSettings()
+  };
+}
+function isPlainObject(v){ return !!v && typeof v === 'object' && !Array.isArray(v); }
+let saveMigrated = false;
+function loadSave(){
+  let parsed = null;
+  try{
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if(raw) parsed = JSON.parse(raw);
+  }catch(e){ parsed = null; }
+  const out = defaultSave();
+  if(!isPlainObject(parsed)) return out;
+  Object.assign(out, parsed); // keep fields this version does not know about
+  const ul = parseInt(parsed.unlockedLevel, 10);
+  out.unlockedLevel = ul >= 1 ? ul : 1;
+  out.completedLevels = Array.isArray(parsed.completedLevels)
+    ? parsed.completedLevels.map(n=>parseInt(n,10)).filter(n=>n>0) : [];
+  out.totalDeaths = Math.max(0, parseInt(parsed.totalDeaths, 10) || 0);
+  out.levelStats = isPlainObject(parsed.levelStats) ? parsed.levelStats : {};
+  const season = parseInt(parsed.statsSeason, 10) || 1;
+  if(season < STATS_SEASON){
+    // Levels were redesigned: keep the old stats (archived, never deleted)
+    // and start best times fresh. Unlocks and completions are untouched.
+    if(Object.keys(out.levelStats).length){
+      out.archivedLevelStats = Object.assign({}, isPlainObject(parsed.archivedLevelStats) ? parsed.archivedLevelStats : {});
+      out.archivedLevelStats['season' + season] = out.levelStats;
+    }
+    out.levelStats = {};
+    out.statsSeason = STATS_SEASON;
+    saveMigrated = true;
+  }
+  out.settings = Object.assign(defaultSettings(), isPlainObject(parsed.settings) ? parsed.settings : {});
+  out.version = Math.max(SAVE_VERSION, parseInt(parsed.version, 10) || 0);
+  return out;
+}
+const save = loadSave();
+function persistSave(){
+  try{ window.localStorage.setItem(STORAGE_KEY, JSON.stringify(save)); }catch(e){}
+}
+if(saveMigrated) persistSave();
+
+/* =========================================================================
+   AUDIO (synthesized WebAudio, no files)
+   Nothing is created until the first user gesture, so browsers never log
+   autoplay warnings and no sound is scheduled into a suspended context.
+========================================================================= */
+const Sound = (function(){
+  // Signal chain: voices -> (dry + small room reverb) -> compressor -> out.
+  // Everything is synthesized, so there are no audio files to load.
+  let ctx = null, master = null, sfxBus = null, musicBus = null, reverb = null;
+  let unlocked = false, musicTimer = null, nextNoteT = 0, step = 0, lastFoot = 0, footAlt = 0;
+
+  function makeImpulse(c, secs, decay){
+    const len = Math.floor(c.sampleRate*secs), buf = c.createBuffer(2, len, c.sampleRate);
+    for(let ch=0; ch<2; ch++){
+      const d = buf.getChannelData(ch);
+      for(let i=0;i<len;i++) d[i] = (Math.random()*2-1) * Math.pow(1 - i/len, decay);
+    }
+    return buf;
+  }
+  function ensure(){
+    if(!unlocked) return null;
+    if(!ctx){
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if(!AC) return null;
+      try{ ctx = new AC(); }catch(e){ return null; }
+      const comp = ctx.createDynamicsCompressor();
+      comp.threshold.value = -16; comp.knee.value = 12; comp.ratio.value = 4; comp.attack.value = 0.004; comp.release.value = 0.18;
+      master = ctx.createGain(); master.gain.value = 0.85;
+      master.connect(comp); comp.connect(ctx.destination);
+      reverb = ctx.createConvolver(); reverb.buffer = makeImpulse(ctx, 1.1, 3.2);
+      const wet = ctx.createGain(); wet.gain.value = 0.16;
+      reverb.connect(wet); wet.connect(master);
+      sfxBus = ctx.createGain(); sfxBus.gain.value = 1; sfxBus.connect(master);
+      musicBus = ctx.createGain(); musicBus.gain.value = 0.42; musicBus.connect(master);
+    }
+    if(ctx.state === 'suspended'){ const pr = ctx.resume(); if(pr && pr.catch) pr.catch(()=>{}); }
+    return ctx;
+  }
+  // One synth voice: oscillator with pitch glide, optional low-pass sweep, ADSR-ish envelope.
+  function voice(o){
+    if(!(o.music ? save.settings.music : save.settings.sound)) return;
+    const c = ensure(); if(!c) return;
+    const t0 = (o.at != null ? o.at : c.currentTime) + (o.delay || 0);
+    const dur = o.dur || 0.12, vol = o.vol != null ? o.vol : 0.15;
+    const osc = c.createOscillator(), g = c.createGain();
+    osc.type = o.type || 'sine';
+    osc.frequency.setValueAtTime(o.f, t0);
+    if(o.to) osc.frequency.exponentialRampToValueAtTime(Math.max(20, o.to), t0 + (o.glide || dur));
+    if(o.detune) osc.detune.value = o.detune;
+    let node = osc;
+    if(o.lp){
+      const f = c.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = o.q || 0.7;
+      f.frequency.setValueAtTime(o.lp, t0);
+      if(o.lpTo) f.frequency.exponentialRampToValueAtTime(o.lpTo, t0 + dur);
+      osc.connect(f); node = f;
+    }
+    const atk = Math.min(o.attack != null ? o.attack : 0.008, dur/3);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol, t0 + atk);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    node.connect(g);
+    g.connect(o.music ? musicBus : sfxBus);
+    if(o.verb) g.connect(reverb);
+    osc.start(t0); osc.stop(t0 + dur + 0.05);
+  }
+  function noise(o){
+    if(!(o.music ? save.settings.music : save.settings.sound)) return;
+    const c = ensure(); if(!c) return;
+    const t0 = (o.at != null ? o.at : c.currentTime) + (o.delay || 0);
+    const dur = o.dur || 0.1;
+    const len = Math.max(1, Math.floor(c.sampleRate*dur)), buf = c.createBuffer(1, len, c.sampleRate), d = buf.getChannelData(0);
+    for(let i=0;i<len;i++) d[i] = Math.random()*2-1;
+    const src = c.createBufferSource(); src.buffer = buf;
+    const f = c.createBiquadFilter(); f.type = o.filter || 'bandpass'; f.Q.value = o.q || 0.9;
+    f.frequency.setValueAtTime(o.f || 1200, t0);
+    if(o.to) f.frequency.exponentialRampToValueAtTime(Math.max(30, o.to), t0 + dur);
+    const g = c.createGain(), vol = o.vol != null ? o.vol : 0.15;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol, t0 + Math.min(0.006, dur/4));
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    src.connect(f); f.connect(g); g.connect(o.music ? musicBus : sfxBus);
+    if(o.verb) g.connect(reverb);
+    src.start(t0); src.stop(t0 + dur + 0.02);
+  }
+  const notes = (list, base)=>list.forEach((n, i)=>voice(Object.assign({}, base, n)));
+
+  // Music: a light, bouncy loop (A minor: Am F C G), scheduled on the audio clock.
+  const BPM = 104, S16 = 60/BPM/4;
+  const CHORDS = [[220.00, 261.63, 329.63], [174.61, 220.00, 261.63], [196.00, 261.63, 329.63], [196.00, 246.94, 293.66]];
+  const BASS = [110.00, 87.31, 130.81, 98.00];
+  const LEAD = [0, -1, 2, -1, 4, -1, 2, 1, 0, -1, -1, 2, 4, -1, 3, -1];
+  const SCALE = [440, 523.25, 587.33, 659.25, 783.99];
+  function schedule(){
+    const c = ensure(); if(!c || !save.settings.music) return;
+    if(nextNoteT < c.currentTime) nextNoteT = c.currentTime + 0.06;
+    while(nextNoteT < c.currentTime + 0.3){
+      const bar = (step >> 4) % 4, s16 = step % 16, t = nextNoteT;
+      if(s16 === 0) CHORDS[bar].forEach((f, k)=>voice({f, type:'triangle', dur:S16*15, vol:0.022, attack:0.18, lp:1400, music:true, at:t, detune:k*4}));
+      if(s16 % 4 === 0) voice({f:BASS[bar], to:BASS[bar]*0.995, type:'triangle', dur:S16*3.2, vol:0.07, lp:600, music:true, at:t});
+      if(s16 === 0 || s16 === 8) voice({f:130, to:45, dur:0.16, vol:0.09, music:true, at:t});            // soft kick
+      if(s16 % 4 === 2) noise({f:7000, filter:'highpass', dur:0.035, vol:0.02, music:true, at:t});    // hat
+      if(s16 === 4 || s16 === 12) noise({f:1800, dur:0.09, vol:0.03, music:true, at:t});               // snap
+      const li = LEAD[(s16 + bar*3) % 16];
+      if(li >= 0 && (bar % 2 === 1 || s16 < 8)) voice({f:SCALE[li], type:'square', dur:S16*1.6, vol:0.016, lp:2200, lpTo:900, music:true, at:t});
+      nextNoteT += S16; step++;
+    }
+  }
+
+  const api = {
+    unlock(){ unlocked = true; ensure(); if(save.settings.music) api.startMusic(); },
+    startMusic(){ if(musicTimer || !unlocked) return; nextNoteT = 0; musicTimer = setInterval(schedule, 100); schedule(); },
+    stopMusic(){ if(musicTimer){ clearInterval(musicTimer); musicTimer = null; } },
+    suspend(){ api.stopMusic(); if(ctx && ctx.state === 'running'){ const pr = ctx.suspend(); if(pr && pr.catch) pr.catch(()=>{}); } },
+    resume(){ if(!unlocked) return; ensure(); if(save.settings.music) api.startMusic(); },
+    // movement
+    jump(){ voice({f:290, to:640, glide:0.1, type:'triangle', dur:0.16, vol:0.13}); noise({f:900, to:3200, dur:0.08, vol:0.03, filter:'highpass'}); },
+    land(){ noise({f:500, to:120, dur:0.07, vol:0.07, filter:'lowpass'}); voice({f:140, to:70, dur:0.08, vol:0.08}); },
+    landHeavy(){ noise({f:400, to:80, dur:0.14, vol:0.13, filter:'lowpass'}); voice({f:110, to:45, dur:0.16, vol:0.14}); },
+    footstep(){
+      const now = performance.now(); if(now - lastFoot < 110) return; lastFoot = now; footAlt ^= 1;
+      noise({f:footAlt ? 900 : 700, dur:0.04, vol:0.035, q:1.5});
+    },
+    wallBump(){ voice({f:150, to:90, dur:0.07, vol:0.07}); },
+    // failure: a cartoony "pop", a crunch and a little falling whistle
+    death(reason){
+      voice({f:620, to:90, glide:0.2, type:'triangle', dur:0.22, vol:0.12});
+      if(reason === 'fall'){ voice({f:900, to:180, glide:0.45, dur:0.45, vol:0.07, verb:true}); return; }
+      noise({f:1600, to:300, dur:0.16, vol:0.12, filter:'lowpass'});
+      if(reason === 'spike' || reason === 'saw') voice({f:1900, to:1400, type:'square', dur:0.05, vol:0.04, lp:3000});
+      if(reason === 'crush' || reason === 'chaser') voice({f:80, to:40, dur:0.25, vol:0.16});
+    },
+    respawn(){ notes([{f:523.25}, {f:659.25, delay:0.045}, {f:783.99, delay:0.09}], {dur:0.09, vol:0.05, verb:true}); },
+    // rewards
+    checkpoint(){ voice({f:880, dur:0.5, vol:0.08, verb:true}); voice({f:1318.5, dur:0.6, vol:0.05, delay:0.06, verb:true}); },
+    victory(){
+      notes([{f:523.25}, {f:659.25, delay:0.09}, {f:783.99, delay:0.18}, {f:1046.5, delay:0.27, dur:0.4}], {type:'triangle', dur:0.14, vol:0.11, verb:true});
+      voice({f:2093, dur:0.6, vol:0.03, delay:0.27, verb:true});
+    },
+    finale(){
+      notes([{f:523.25}, {f:659.25, delay:0.1}, {f:783.99, delay:0.2}, {f:1046.5, delay:0.3}, {f:783.99, delay:0.42}, {f:1046.5, delay:0.52, dur:0.7}], {type:'triangle', dur:0.14, vol:0.11, verb:true});
+      [261.63, 329.63, 392.00].forEach(f=>voice({f, type:'triangle', dur:1.3, vol:0.04, delay:0.52, attack:0.05, verb:true}));
+    },
+    // traps
+    trapReveal(){ voice({f:1760, to:1180, type:'square', dur:0.07, vol:0.05, lp:4000}); voice({f:2637, dur:0.25, vol:0.025, delay:0.02, verb:true}); },
+    warn(){ notes([{f:988}, {f:988, delay:0.13}], {type:'square', dur:0.07, vol:0.045, lp:2500, verb:true}); },
+    crack(){ noise({f:2400, dur:0.04, vol:0.07, q:3}); },
+    collapse(){ noise({f:600, to:90, dur:0.35, vol:0.14, filter:'lowpass'}); voice({f:90, to:45, dur:0.3, vol:0.1}); },
+    rumble(){ noise({f:220, to:60, dur:0.9, vol:0.18, filter:'lowpass'}); voice({f:55, to:40, dur:0.9, vol:0.1, attack:0.08}); },
+    doorMove(){ noise({f:500, to:2600, dur:0.28, vol:0.08, q:1.5}); voice({f:330, to:660, glide:0.2, type:'triangle', dur:0.22, vol:0.05}); },
+    recordScratch(){ noise({f:2600, to:200, dur:0.22, vol:0.12, q:2}); voice({f:420, to:150, glide:0.2, type:'square', dur:0.2, vol:0.03, lp:1500}); },
+    // UI
+    uiClick(){ voice({f:1050, to:880, dur:0.045, vol:0.045}); }
+  };
+  return api;
+})();
+
+function vibrate(pattern){
+  if(!save.settings.vibration || !navigator.vibrate) return;
+  try{ navigator.vibrate(pattern); }catch(e){}
+}
+const HAPTIC = { small:[12], medium:[25,15,25], strong:[45,30,70] };
+
+/* =========================================================================
+   LEVEL DATA
+   Coordinates are world units. The view is 900 units tall; ground tops sit
+   at y=680. Physics reference: max jump height ~160, flat jump distance
+   ~290 at full run speed.
+
+   platforms: {x,y,w,h,type}
+     type 'solid' | 'disappearing' (delay ms after being stood on)
+          | 'moving' (path:{x1,y1,x2,y2,speed,pauseStart,pause})
+          | 'invisible' (solid but not drawn until touched)
+   hazards:
+     'spike'          static, lethal
+     'hiddenSpike'    pops up when revealTrigger:{x,w} is entered or a trigger reveals it
+     'saw'            moves along path like a moving platform, circular hitbox
+     'fallingCeiling' crusher; idle -> warning -> falling (lethal) -> rested (solid)
+                      triggerZone:{x,w}, warningTime, fallSpeed, restY
+     'chaser'         a wall that sweeps right at `speed` once started; front starts
+                      at `startX`, stops at `stopX`
+   triggers: {x,w, actions:[...]}  (zone spans the full level height)
+     {do:'collapse', plat:i, delay:ms}  {do:'reveal', hazard:i}
+     {do:'start', hazard:i}  {do:'moveGoal', to:{x,y}}  {do:'toast', text}
+   checkpoints: [{x,y}]  (y = ground top the flag stands on)
+   goal: {x,y,w,h,type:'normal'|'fake', fakeCount}
+========================================================================= */
+const GLOBAL_DEATH_MESSAGES = [
+  "Almost.", "You really fell for that?", "That was intentional.", "Try again.",
+  "Interesting choice.", "You knew better.", "So close.", "Again?",
+  "You were doing so well.", "Skill issue. Probably.", "Come on!"
+];
+
+const G = 680; // standard ground top
+function ground(x, w, extra){ return Object.assign({x, y:G, w, h:900-G, type:'solid'}, extra||{}); }
+function spike(x, w){ return {x, y:G-22, w:w||44, h:22, type:'spike'}; }
+
+const LEVELS = [];
+
+/* =========================================================================
+   LEVELS: assembled from obstacle segments.
+   Each segment starts on flat ground at cursor `c`, adds its geometry and
+   the inputs that clear it (`route`, used by the automated play-through
+   tests to prove every level is beatable). Parameters tighten as levels go
+   up: wider gaps, faster rushers and saws, less time on crumbling tiles,
+   faster chasing walls, trickier exits.
+
+   Segment specs (strings): 'gap:W' 'island:W:I' 'spikes:N' 'hidden' 'tiles:K:W:MARGINms'
+   'slide:W' 'rusher:SPEED' 'ceiling' 'crusher' 'saw:SPEED' 'vsaw'
+   'moving:W[:ceil]' 'step' 'invisible:W' 'fake' 'trapdoor:W' 'skyspike' 'leaper' 'riser'
+   Every segment also gets a hint (SEG_HINTS) that the game shows after a
+   player dies at it twice, and each level can list the new elements it
+   introduces (`learn`), shown as a card when the level starts.
+========================================================================= */
+const SEG_HINTS = {
+  gap:'Jump from the very edge, and hold jump to go further.',
+  spikes:'Hold jump longer to clear wide spikes.',
+  hidden:'A spike hides in the floor here. Jump just before where it pops up.',
+  tiles:'Cracked floor falls. Never stop on it: run straight across.',
+  slide:'The floor slides away from you. Jump right at the edge, as it moves.',
+  rusher:'That spike charges at you. Keep running and jump when it is close.',
+  ceiling:'Spiked ceiling: tap jump for a tiny hop. A full jump kills you.',
+  crusher:'Stop before the crusher. Let it slam down, then climb over it.',
+  saw:'Wait for the saw to move away from you, then run in behind it.',
+  vsaw:'Run under the saw while it is up.',
+  moving:'Wait for the platform, step on, stand still. Do not jump under the spikes.',
+  island:'Land on the pillar and jump again straight away.',
+  ambush:'A spike pops up where you would land. Jump from the very edge, then hop it.',
+  crumble:'The pillar falls the moment you land. Jump again instantly.',
+  reverse:'In the red zone, left is right. Press \u2190 to go forward and jump the spike.',
+  dropceiling:'The ceiling drops on you. Keep running and only tap jump.',
+  stalactites:'Blocks fall when you pass under them. Never slow down.',
+  popup:'Three spikes pop up one after another: hop, hop, hop.',
+  step:'Jump up onto the ledge.',
+  invisible:'There is a floor here. You just cannot see it. Keep walking.',
+  fake:'That floor is fake. Jump over it.',
+  trapdoor:'The floor drops away under you. Jump before you reach the seam.',
+  skyspike:'A spike falls from the sky. Stop when it starts falling, let it land, then jump it.',
+  leaper:'That spike jumps when you jump. Do not jump: just run under it.',
+  riser:'A wall shoots up. Jump it the moment it rises.',
+  'exit-collapse':'The floor under the door falls and the door runs. Jump early, then climb the ledges.',
+  'exit-fake':'The door pushes you back once. Walk into it again.',
+  'exit-runaway':'The door runs away and leaves a spike behind. Follow it and jump the spike.',
+  'exit-plain':'Almost there. Do not get greedy.',
+  chase:'The wall never stops. Neither can you: no pauses, no hesitation.'
+};
+function buildLevel(def){
+  const plats = [], hazards = [], triggers = [], checkpoints = [], route = [{hold:'right'}], segs = [];
+  const P = (o)=>{ plats.push(o); return plats.length - 1; };
+  const H = (o)=>{ hazards.push(o); return hazards.length - 1; };
+  let c = 0;
+  P(ground(0, 400)); c = 400;
+  def.segments.forEach((spec, n)=>{
+    const a = spec.split(':'), kind = a[0], v = parseFloat(a[1]);
+    if(!def.chase && n > 0 && n % 3 === 0) checkpoints.push({x:c + 80, y:G, routeIndex:route.length});
+    const x0 = c;
+    switch(kind){
+      case 'gap':
+        P(ground(c, 300)); route.push({jumpAt:c + 260}); c += 300 + v; break;
+      case 'spikes': {
+        const w = 22*(v + 1);
+        P(ground(c, 600)); H(spike(c + 300, w)); route.push({jumpAt:c + 220}); c += 600; break;
+      }
+      case 'hidden':
+        P(ground(c, 600)); H({x:c + 300, y:G-22, w:44, h:22, type:'hiddenSpike', revealTrigger:{x:c + 150, w:30}});
+        route.push({jumpAt:c + 220}); c += 600; break;
+      case 'tiles': {
+        const k = v, w = parseFloat(a[2]), delay = Math.round((w + 34)/380*1000 + parseFloat(a[3])); // 380 = run speed
+        P(ground(c, 300));
+        for(let i=0;i<k;i++) P(ground(c + 300 + i*w, w, {type:'disappearing', delay}));
+        c += 300 + k*w; break;
+      }
+      case 'slide': {
+        P(ground(c, 300));
+        const s = P(ground(c + 300, 300));
+        triggers.push({x:c + 230, w:20, actions:[{do:'slide', plat:s, to:{x:c + 300 + v}, dur:0.22}]});
+        route.push({jumpAt:c + 260}); c += 600 + v; break;
+      }
+      case 'rusher': {
+        P(ground(c, 900));
+        const h = H({x:c + 800, y:G-22, w:44, h:22, type:'spike', idle:true, path:{x1:c + 800, y1:G-22, x2:c + 320, y2:G-22, speed:v, once:true}});
+        triggers.push({x:c + 300, w:20, actions:[{do:'start', hazard:h}]});
+        route.push({jumpWhen:'H[' + h + '].cx - (p.x + p.w) < 170 && H[' + h + '].cx > p.x'}); c += 900; break;
+      }
+      case 'ceiling':
+        P(ground(c, 800));
+        P({x:c + 250, y:-1200, w:400, h:1670, type:'solid'});
+        H({x:c + 250, y:470, w:400, h:22, type:'spike', flip:true});
+        H(spike(c + 425, 32));
+        route.push({tapAt:c + 340}); c += 800; break;
+      case 'crusher': {
+        P(ground(c, 700));
+        const h = H({x:c + 400, y:330, w:140, h:90, type:'fallingCeiling', triggerZone:{x:c + 300, w:40}, warningTime:0.3, fallSpeed:1500, restY:G-90});
+        route.push({until:'p.x >= ' + (c + 270)}, {release:'right'}, {until:'H[' + h + "].state === 'rested'"}, {hold:'right'}, {jumpAt:c + 340});
+        c += 700; break;
+      }
+      case 'saw': {
+        P(ground(c, 900));
+        const h = H({x:c + 350, y:G-56, w:56, h:56, type:'saw', path:{x1:c + 350, y1:G-56, x2:c + 650, y2:G-56, speed:v, pauseStart:0, pause:0.3}});
+        route.push({moveTo:c + 250}, {until:'H[' + h + '].dir < 0 && H[' + h + '].cx < ' + (c + 600) + ' && H[' + h + '].cx > ' + (c + 450)},
+          {hold:'right'}, {jumpWhen:'H[' + h + '].cx - (p.x + p.w) < 90'});
+        c += 900; break;
+      }
+      case 'vsaw': {
+        P(ground(c, 600));
+        const h = H({x:c + 300, y:470, w:60, h:60, type:'saw', path:{x1:c + 300, y1:470, x2:c + 300, y2:G-56, speed:260, pauseStart:0, pause:0.25}});
+        route.push({moveTo:c + 200}, {until:'H[' + h + '].dir < 0 && H[' + h + '].cy < 580'}, {hold:'right'});
+        c += 600; break;
+      }
+      case 'moving': {
+        P(ground(c, 300));
+        const x2 = c + 300 + v - 130;
+        const m = P({x:c + 300, y:G, w:120, h:30, type:'moving', path:{x1:c + 300, y1:G, x2:x2, y2:G, speed:180, pauseStart:0.5, pause:0.6}});
+        if(a[2] === 'ceil'){
+          P({x:c + 300, y:-1200, w:v, h:1670, type:'solid'});
+          H({x:c + 300, y:470, w:v, h:22, type:'spike', flip:true});
+        }
+        route.push({moveTo:c + 260}, {until:'P[' + m + '].cx <= ' + (c + 301) + ' && P[' + m + '].waitT > 0.15'},
+          {hold:'right'}, {until:'p.x >= ' + (c + 315)}, {release:'right'}, {until:'P[' + m + '].cx >= ' + (x2 - 1)}, {hold:'right'});
+        c += 300 + v; break;
+      }
+      case 'island': {
+        // gap, a narrow pillar, gap: land on the pillar and leave at once
+        const W = v, I = parseFloat(a[2]);
+        P(ground(c, 300)); P({x:c + 300 + W, y:G, w:I, h:900 - G, type:'solid'});
+        route.push({jumpAt:c + 260}, {jumpAt:c + 300 + W + I - 40});
+        c += 300 + 2*W + I; break;
+      }
+      case 'ambush': {
+        // mid-jump, a spike pops up exactly where a normal jump lands: jump early, then hop it
+        const W = v, X = c + 300 + W + 100;
+        P(ground(c, 300)); P(ground(c + 300 + W, 600));
+        const h = H({x:X, y:G-22, w:44, h:22, type:'hiddenSpike'});
+        triggers.push({x:c + 300 + W/2, w:20, actions:[{do:'reveal', hazard:h}]});
+        route.push({jumpAt:c + W + 28}, {jumpAt:c + 300 + W + 20});
+        c += 300 + W + 600; break;
+      }
+      case 'crumble': {
+        // narrow pillar that collapses right after you land on it
+        const W = v, I = parseFloat(a[2]);
+        P(ground(c, 300)); P({x:c + 300 + W, y:G, w:I, h:900 - G, type:'disappearing', delay:150});
+        route.push({jumpAt:c + 260}, {jumpAt:c + 300 + W});
+        c += 300 + 2*W + I; break;
+      }
+      case 'reverse': {
+        // left/right swap inside the zone (with a big warning); a spike waits in the middle
+        const L = v, X = c + 300 + Math.round(L/2);
+        P(ground(c, 600 + L)); H(spike(X, 44));
+        triggers.push({x:c + 250, w:20, actions:[{do:'reverse', on:true}]});
+        triggers.push({x:c + 300 + L, w:20, actions:[{do:'reverse', on:false}]});
+        route.push({until:'p.x >= ' + (c + 217)}, {release:'right'}, {hold:'left'}, {jumpAt:X - 80},
+          {until:'p.x >= ' + (c + 267 + L)}, {release:'left'}, {hold:'right'});
+        c += 600 + L; break;
+      }
+      case 'dropceiling': {
+        // a high ceiling slams down as you enter: only a tap jump survives
+        P(ground(c, 800));
+        const ceil = P({x:c + 250, y:-1370, w:400, h:1670, type:'solid'});
+        const h = H({x:c + 250, y:300, w:400, h:22, type:'spike', flip:true, idle:true, path:{x1:c + 250, y1:300, x2:c + 250, y2:470, speed:680, once:true}});
+        H(spike(c + 425, 32));
+        triggers.push({x:c + 200, w:20, actions:[{do:'slide', plat:ceil, to:{y:-1200}, dur:0.25}, {do:'start', hazard:h}]});
+        route.push({tapAt:c + 340}); c += 800; break;
+      }
+      case 'stalactites': {
+        // blocks drop the instant you are under them; they only miss you at full speed
+        const n = v;
+        P(ground(c, 300 + n*220 + 200));
+        for(let k=0;k<n;k++){
+          const X = c + 300 + k*220;
+          H({x:X, y:330, w:60, h:90, type:'fallingCeiling', triggerZone:{x:X + 42, w:20}, warningTime:0.02, fallSpeed:1800, restY:G-90});
+        }
+        c += 300 + n*220 + 200; break;
+      }
+      case 'popup': {
+        // three hidden spikes rise one after another: chain three quick jumps
+        P(ground(c, 1100));
+        for(let k=0;k<3;k++){
+          const X = c + 300 + k*300;
+          H({x:X, y:G-22, w:44, h:22, type:'hiddenSpike', revealTrigger:{x:X - 150, w:30}});
+          route.push({jumpAt:X - 80});
+        }
+        c += 1100; break;
+      }
+      case 'step':
+        P(ground(c, 300)); P({x:c + 300, y:560, w:300, h:340, type:'solid'});
+        route.push({jumpAt:c + 190}); c += 600; break;
+      case 'invisible':
+        P(ground(c, 300)); P(ground(c + 300, v, {type:'invisible'})); c += 300 + v; break;
+      case 'fake':
+        P(ground(c, 300)); P(ground(c + 300, 250, {type:'disappearing', delay:170}));
+        route.push({jumpAt:c + 260}); c += 550; break;
+      case 'trapdoor': {
+        // looks like more floor; drops out of the world as you arrive
+        P(ground(c, 300));
+        const t = P(ground(c + 300, v));
+        triggers.push({x:c + 210, w:20, actions:[{do:'slide', plat:t, to:{y:1100}, dur:0.2}]});
+        route.push({jumpAt:c + 255}); c += 300 + v; break;
+      }
+      case 'skyspike': {
+        // a spike drops out of the sky onto the spot you are running to
+        const X = c + 400;
+        P(ground(c, 700));
+        const h = H({x:X, y:-120, w:50, h:24, type:'spike', flip:true, idle:true, noTrack:true, kind:'skyspike', path:{x1:X, y1:-120, x2:X, y2:G-24, speed:1500, once:true}});
+        triggers.push({x:c + 220, w:20, actions:[{do:'start', hazard:h}]});
+        route.push({until:'!H[' + h + '].idle'}, {release:'right'}, {until:'H[' + h + '].done'}, {hold:'right'}, {jumpAt:X - 105});
+        c += 700; break;
+      }
+      case 'leaper': {
+        // a floor spike that leaps up into your jump: run under it instead
+        const X = c + 400;
+        P(ground(c, 700));
+        const h = H({x:X, y:G-22, w:44, h:22, type:'spike', idle:true, noTrack:true, kind:'leaper', path:{x1:X, y1:G-22, x2:X, y2:G-215, speed:1100, once:true}});
+        triggers.push({x:c + 290, w:20, actions:[{do:'start', hazard:h}]});
+        c += 700; break;
+      }
+      case 'riser': {
+        // a wall shoots up out of the floor in front of you
+        P(ground(c, 700));
+        const w = P({x:c + 400, y:G, w:60, h:900 - G + 110, type:'solid'});
+        triggers.push({x:c + 250, w:20, actions:[{do:'slide', plat:w, to:{y:G - 110}, dur:0.12}]});
+        route.push({jumpAt:c + 275}); c += 700; break;
+      }
+    }
+    segs.push({x0, x1:c, kind});
+  });
+  const chaser = def.chase ? H({type:'chaser', x:-2400, y:0, w:2400, h:900, startX:-150, stopX:c - 100, speed:def.chase}) : -1;
+  if(chaser >= 0) triggers.push({x:330, w:20, actions:[{do:'start', hazard:chaser}, {do:'toast', text:'RUN.'}]});
+  let goal;
+  const exitX0 = c;
+  if(def.exit === 'runaway'){
+    // the door hops away twice, leaving a spike where it stood each time
+    P(ground(c, 1500));
+    const s1 = H({x:c + 458, y:G-22, w:44, h:22, type:'hiddenSpike'});
+    const s2 = H({x:c + 908, y:G-22, w:44, h:22, type:'hiddenSpike'});
+    triggers.push({x:c + 300, w:20, actions:[{do:'moveGoal', to:{x:c + 900, y:G-100}}, {do:'reveal', hazard:s1}]});
+    triggers.push({x:c + 750, w:20, actions:[{do:'moveGoal', to:{x:c + 1330, y:G-100}}, {do:'reveal', hazard:s2}]});
+    goal = {x:c + 450, y:G-100, w:70, h:100, type:'normal'};
+    route.push({jumpAt:c + 360}, {jumpAt:c + 810});
+    c += 1500;
+  } else if(def.exit === 'collapse'){
+    P(ground(c, 400));
+    const fall = P(ground(c + 400, 240));
+    P(ground(c + 640, 220));
+    P({x:c + 860, y:540, w:130, h:360, type:'solid'});
+    const hole = P({x:c + 990, y:540, w:90, h:360, type:'solid'});
+    P({x:c + 1080, y:540, w:120, h:360, type:'solid'});
+    P({x:c + 1180, y:300, w:20, h:240, type:'solid'});
+    triggers.push({x:c + 340, w:40, actions:[{do:'collapse', plat:fall, delay:150}, {do:'moveGoal', to:{x:c + 1100, y:440}}]});
+    triggers.push({x:c + 930, w:20, actions:[{do:'collapse', plat:hole, delay:110}]});
+    goal = {x:c + 500, y:G-100, w:70, h:100, type:'normal'};
+    route.push({jumpAt:c + 360}, {jumpAt:c + 740}, {jumpAt:c + 950});
+    c += 1200;
+  } else {
+    P(ground(c, 600));
+    goal = {x:c + 400, y:G-100, w:70, h:100, type:def.exit === 'fake' ? 'fake' : 'normal', fakeCount:1};
+    c += 600;
+  }
+  segs.push({x0:exitX0, x1:c, kind:'exit-' + (def.exit || 'plain')});
+  route.push({until:'false'});
+  return {
+    id:def.id, name:def.name, subtitle:def.subtitle || '',
+    segs, learn:def.learn || [], hints:def.hints || {},
+    width:c, height:900, spawn:{x:90, y:G-62},
+    platforms:plats, hazards, triggers, checkpoints, goal,
+    annotations: def.taunt ? [{x:70, y:470, text:def.taunt, touchText:def.tauntTouch}] : [],
+    deathMessages: def.deathMessages || [],
+    completionMessage: def.completionMessage || '',
+    route
+  };
+}
+
+[
+  // ---- 1-5: one new idea per level, taught with a card, then turned against you ----
+  {id:1, name:'FIRST STEPS', taunt:'← → move · ↑ jump', tauntTouch:'hold ← → · tap JUMP',
+   learn:[{t:'SPIKES', d:'Red means death. Jump over it. Hold jump to go higher.'}, {t:'THE EXIT', d:'Reach the door to clear the level. If it lets you.'}],
+   segments:['spikes:1','gap:150','spikes:2','step','gap:170'], exit:'runaway',
+   deathMessages:['The door had other plans.','It moved. Obviously.','Exits are suggestions.'], completionMessage:'Lesson one: the exit is never where it says it is.'},
+  {id:2, name:'CRUMBLE', taunt:'keep moving.',
+   learn:[{t:'CRUMBLING FLOOR', d:'Cracks red, then drops. Never stop on it.'}],
+   segments:['tiles:3:120:120','gap:180','tiles:4:110:80','spikes:1','crumble:180:140','tiles:5:100:60','gap:190'], exit:'plain',
+   deathMessages:['You trusted the floor.','You stopped. It noticed.','It was never going to hold.'], completionMessage:'Nothing under you is permanent.'},
+  {id:3, name:'PEEKABOO', taunt:'look closer.',
+   learn:[{t:'HIDDEN SPIKES', d:'Some spikes wait under the floor until you get close.'}, {t:'LYING DOORS', d:'Some doors push you back. Walk in again.'}],
+   segments:['spikes:1','hidden','gap:190','popup','tiles:4:100:70','ambush:140','hidden','gap:200'], exit:'fake',
+   deathMessages:['That was not there.','Now you see it.','It was there the whole time.'], completionMessage:'You stopped trusting your eyes.'},
+  {id:4, name:'MACHINES', taunt:'timing.',
+   learn:[{t:'SAWS', d:'They patrol back and forth. Go when they turn away.'}, {t:'CRUSHERS', d:'They drop when you get close. Let them land, then climb on.'}],
+   segments:['saw:240','hidden','crusher','gap:200','vsaw','crumble:190:130','saw:270','popup','crusher','gap:205'], exit:'fake',
+   deathMessages:['Sliced.','Flattened.','Wait for it. Then really go.'], completionMessage:'All limbs accounted for.'},
+  {id:5, name:'RUN', chase:345,
+   learn:[{t:'THE WALL', d:'It chases you through the whole level. Do not stop. Ever.'}],
+   segments:['gap:200','tiles:4:100:60','spikes:2','island:200:130','hidden','crumble:195:130','tiles:5:100:50','ambush:145','gap:210'], exit:'plain',
+   deathMessages:['It does not get tired.','You hesitated.','Momentum is everything.'], completionMessage:'You outran it. This time.'},
+  // ---- 6-10: no mercy ----
+  {id:6, name:'BUTTER', taunt:'slippery.',
+   learn:[{t:'SLIDING FLOOR', d:'The floor ahead slides away as you reach it.'}, {t:'RUSHING SPIKES', d:'A spike charges at you. Jump it when it is close.'}, {t:'RUNNING DOOR', d:'The floor under the door can fall. Then the door runs.'}],
+   segments:['slide:220','rusher:600','slide:230','tiles:5:100:50','rusher:640','crumble:200:120','ambush:150','popup','slide:235','gap:220'], exit:'collapse',
+   deathMessages:['It slid. You did not.','It was coming the whole time.','Floors move here.'], completionMessage:'Buttered. Not toasted.'},
+  {id:7, name:'LOW BLOW', taunt:'small jumps.',
+   learn:[{t:'LOW CEILINGS', d:'Spikes above you. Tap jump for a tiny hop.'}, {t:'DROPPING CEILING', d:'Some ceilings come down to meet you.'}, {t:'RIDES', d:'Moving platforms carry you. Stand still on them.'}],
+   segments:['ceiling','gap:210','dropceiling','moving:420:ceil','rusher:660','ceiling','crumble:205:115','dropceiling','popup','gap:225'], exit:'collapse',
+   deathMessages:['Too much jump.','The ceiling bites.','Short hop. SHORT.'], completionMessage:'You learned restraint.'},
+  {id:8, name:'TRAPDOOR', taunt:'solid ground.',
+   learn:[{t:'TRAPDOORS', d:'Normal-looking floor that drops out from under you.'}, {t:'SKY SPIKES', d:'Spikes fall out of the sky onto where you are going.'}],
+   segments:['trapdoor:200','skyspike','trapdoor:210','crumble:205:110','skyspike','ambush:150','trapdoor:220','dropceiling','rusher:680','popup','gap:230'], exit:'fake',
+   deathMessages:['The floor had a door in it.','Look up. Too late.','Solid ground. Allegedly.'], completionMessage:'You walk like you expect the floor to leave. Good.'},
+  {id:9, name:'MIRROR', taunt:'do as I say.',
+   learn:[{t:'REVERSED CONTROLS', d:'In the red zone left is right and right is left.'}, {t:'JUMPING SPIKES', d:'Some spikes jump when you jump. Do not.'}],
+   segments:['leaper','trapdoor:210','reverse:600','skyspike','leaper','crumble:210:105','ambush:150','reverse:650','tiles:5:90:45','leaper','dropceiling','gap:235'], exit:'collapse',
+   deathMessages:['It jumped too.','Left. No. Right. No.','You reacted. It predicted.'], completionMessage:'You learned to do nothing. Impressive.'},
+  {id:10, name:'GHOST', taunt:'trust nothing you see.',
+   learn:[{t:'INVISIBLE FLOOR', d:'Some floor is there even when you cannot see it.'}, {t:'FAKE FLOOR', d:'Some floor you can see is not there.'}, {t:'RISING WALLS', d:'Walls shoot up out of the ground. Jump them.'}],
+   segments:['invisible:230','fake','riser','trapdoor:220','skyspike','leaper','reverse:650','crumble:215:100','invisible:240','ambush:155','stalactites:2','rusher:700','dropceiling','riser','gap:240'], exit:'collapse',
+   deathMessages:['That floor was real. The other one was not.','Seeing is not believing.','Ten levels in and still trusting.'], completionMessage:'You walked on nothing and lived. It only gets worse.'},
+  {id:11,  name:'LEAP OF FAITH', taunt:'mind the gaps.', segments:['gap:220','island:200:120','leaper','ambush:150','island:205:110','crumble:215:100','spikes:1','popup','skyspike','gap:230','crumble:200:120','popup','leaper','step','island:210:105','gap:235'], exit:'plain',
+   deathMessages:['The landing moved. Not you.','Jump earlier. No, later.','That spike was not there. Now it is.'], completionMessage:'Faith rewarded. For now.'},
+  {id:12, name:'SAW MILL', taunt:'timing.', segments:['saw:320','crumble:210:105','skyspike','vsaw','stalactites:2','popup','saw:340','trapdoor:215','ambush:150','vsaw','ambush:155','island:215:100','popup','gap:240'], exit:'fake',
+   deathMessages:['Sliced.','Wait for it. Then go. Then really go.'], completionMessage:'All limbs accounted for.'},
+  {id:13, name:'RUSH HOUR', taunt:'look ahead.', segments:['rusher:620','island:205:110','trapdoor:220','rusher:650','ambush:150','ambush:155','popup','skyspike','rusher:680','crumble:205:110','reverse:650','spikes:2','rusher:700','gap:235'], exit:'fake',
+   deathMessages:['It was in a hurry.','Spikes have places to be.','Rush hour never ends.'], completionMessage:'Traffic survived.'},
+  {id:14, name:'GHOST FLOOR', taunt:'trust nothing you see.', segments:['invisible:240','ambush:150','popup','slide:235','island:210:105','leaper','popup','invisible:250','trapdoor:220','fake','crumble:210:105','crumble:220:95','hidden','reverse:600','gap:240'], exit:'collapse',
+   deathMessages:['That floor was real. The other one was not.','Seeing is not believing.'], completionMessage:'You walked on nothing and lived.'},
+  {id:15, name:'SLIP', taunt:'the floor is shy.', segments:['slide:230','popup','skyspike','slide:235','crumble:205:110','popup','reverse:600','trapdoor:215','slide:240','ambush:150','ambush:155','island:210:105','tiles:5:100:45','slide:245'], exit:'fake',
+   deathMessages:['It slid. You did not.','Left is right now.','Floors move here.'], completionMessage:'You kept your footing. Barely.'},
+  {id:16, name:'LOW CEILING', taunt:'short hops.', segments:['ceiling','dropceiling','leaper','island:210:105','ceiling','crumble:215:100','reverse:600','skyspike','dropceiling','rusher:680','popup','ceiling','crumble:215:100','gap:240'], exit:'fake',
+   deathMessages:['Too much jump.','The ceiling bites.','It was higher a second ago.'], completionMessage:'You learned restraint. Mostly.'},
+  {id:17, name:'DESCENT', taunt:'down we go.', segments:['rusher:690','crumble:215:100','trapdoor:220','moving:440:ceil','dropceiling','ambush:155','slide:240','vsaw','skyspike','ambush:150','reverse:650','reverse:650','tiles:6:90:40','island:215:100','gap:245'], exit:'collapse',
+   deathMessages:['Deeper.','It only gets worse.'], completionMessage:'Still descending. Good luck.'},
+  {id:18, name:'BLIND FAITH', taunt:'close your eyes.', segments:['ambush:155','invisible:250','popup','slide:245','popup','invisible:250','leaper','fake','crumble:220:95','trapdoor:220','hidden','reverse:700','slide:245','crumble:220:95','ambush:160','island:220:95','gap:245'], exit:'collapse',
+   deathMessages:['You could not see it. Now you know.','Memorize. Repeat.'], completionMessage:'Faith, but verified.'},
+  {id:19, name:'CRUSHER ROW', taunt:'look up.', segments:['crusher','stalactites:3','trapdoor:220','crumble:215:100','crusher','ambush:155','ambush:155','tiles:5:90:40','skyspike','crusher','reverse:650','reverse:650','stalactites:3','popup','gap:245'], exit:'collapse',
+   deathMessages:['Flattened.','Patience. Then panic.'], completionMessage:'Still three-dimensional.'},
+  {id:20, name:'QUICKSAND', taunt:'faster.', segments:['tiles:6:90:35','slide:245','leaper','crumble:220:95','tiles:6:90:30','crumble:215:100','fake','reverse:700','tiles:6:90:30','skyspike','ambush:160','slide:245','popup','crumble:225:95','popup','gap:245'], exit:'collapse',
+   deathMessages:['Swallowed.','The floor was hungry.'], completionMessage:'You never stood still.'},
+  {id:21, name:'CHASE', chase:360, segments:['gap:225','popup','trapdoor:220','tiles:4:100:50','leaper','island:205:110','ambush:150','popup','stalactites:2','ambush:155','crumble:205:110','gap:235','hidden'], exit:'plain',
+   deathMessages:['It caught up.','No time to think.','Slower is deader.'], completionMessage:'You outran it again.'},
+  {id:22, name:'MIXED SIGNALS', segments:['reverse:700','slide:240','skyspike','dropceiling','saw:330','popup','ambush:150','fake','trapdoor:215','crumble:215:100','stalactites:3','ambush:155','tiles:5:90:45','popup','gap:240'], exit:'collapse',
+   deathMessages:['Every rule at once.','Read the level, not your hopes.','Left. No. Right. No.'], completionMessage:'Signals decoded.'},
+  {id:23, name:'GRINDER', segments:['saw:340','crumble:220:95','popup','crusher','vsaw','stalactites:3','leaper','saw:350','ambush:160','trapdoor:220','crusher','reverse:650','vsaw','crumble:220:95','island:220:95','dropceiling','gap:245'], exit:'collapse',
+   deathMessages:['Ground up.','Machines do not miss.'], completionMessage:'You beat the machine.'},
+  {id:24, name:'NEEDLE', taunt:'tap. tap. tap.', segments:['dropceiling','spikes:2','leaper','ceiling','popup','crumble:215:100','dropceiling','crumble:220:100','ceiling','skyspike','ambush:155','reverse:650','popup','dropceiling','island:220:95','fake'], exit:'collapse',
+   deathMessages:['Pierced.','Smaller jumps. Smaller.'], completionMessage:'Threaded.'},
+  {id:25, name:'GAUNTLET', segments:['slide:245','crumble:225:90','skyspike','rusher:720','moving:460:ceil','crusher','popup','dropceiling','reverse:700','trapdoor:215','saw:350','tiles:6:90:30','ambush:160','ambush:155','island:225:90','popup','gap:245'], exit:'collapse',
+   deathMessages:['The gauntlet wins this round.','Every trap, in order.'], completionMessage:'Gauntlet run.'},
+  {id:26, name:'NO MERCY', segments:['fake','dropceiling','crumble:225:95','trapdoor:220','vsaw','slide:245','rusher:720','ambush:155','reverse:700','moving:460:ceil','skyspike','tiles:6:90:30','crusher','ambush:160','reverse:650','island:225:90','stalactites:3','popup','gap:245'], exit:'collapse',
+   deathMessages:['No mercy. As advertised.','You were warned.'], completionMessage:'Mercy was never needed.'},
+  {id:27, name:'STAMPEDE', chase:365, segments:['rusher:700','crumble:220:95','trapdoor:220','rusher:720','dropceiling','leaper','tiles:5:90:35','popup','ambush:160','rusher:720','ambush:155','stalactites:2','island:225:90','gap:245'], exit:'collapse',
+   deathMessages:['Trampled.','Everything is coming at you.'], completionMessage:'The herd thinned.'},
+  {id:28, name:'FLIGHT', chase:368, segments:['tiles:5:90:35','dropceiling','trapdoor:220','crumble:225:90','rusher:720','leaper','ambush:160','tiles:5:90:30','popup','ceiling','slide:245','ambush:155','island:225:90','stalactites:2','gap:245'], exit:'collapse',
+   deathMessages:['Flight denied.','Faster. Smaller. Now.'], completionMessage:'Escaped. Again.'},
+  {id:29, name:'LAST BREATH', chase:370, segments:['rusher:720','crumble:225:90','tiles:6:90:30','dropceiling','trapdoor:225','slide:245','ambush:160','island:230:90','fake','popup','rusher:720','ceiling','popup','crumble:230:90','gap:245'], exit:'collapse',
+   deathMessages:['Out of breath.','One more level after this. If you live.'], completionMessage:'Breathe. Then do the last one.'},
+  {id:30, name:'DESKMAN', taunt:'this is the end.', segments:['ambush:160','crumble:230:90','slide:245','rusher:720','moving:460:ceil','crusher','skyspike','dropceiling','island:230:90','reverse:750','saw:360','tiles:6:90:25','leaper','fake','vsaw','stalactites:3','crumble:235:85','slide:245','trapdoor:225','dropceiling','popup','ambush:165','island:235:85','rusher:740','crumble:240:85','gap:245'], exit:'collapse',
+   deathMessages:['Run. Fail. Repeat.','The final lie.','Everything you learned. Everything.'], completionMessage:'You beat deskman.fun. All thirty levels. Nothing here can stop you now.'}
+].forEach(def=>LEVELS.push(buildLevel(def)));
+
+/* =========================================================================
+   ENGINE CONSTANTS
+========================================================================= */
+const VH = 900;                 // world units visible vertically (landscape)
+const MIN_VIEW_W = 840;         // never show less world width than this (portrait)
+const MAX_ASPECT = 2.0;         // wider stages get side bars
+const TOUCH_BAND_CSS = 150;     // px reserved under the world for touch controls (portrait)
+const STEP = 1/120;             // fixed simulation step (s)
+const MAX_STEPS = 12;           // max catch-up steps per frame (~0.1 s)
+const GRAVITY = 2200;
+const MOVE_SPEED = 380;
+const GROUND_ACCEL = 2800, GROUND_DECEL = 3200;
+const AIR_ACCEL = 1900, AIR_DECEL = 1400;
+const RUN_THRESHOLD = 0.28;
+const JUMP_VELOCITY = -840;
+const JUMP_CUT = 0.5;           // vy multiplier when jump is released while rising
+const MAX_FALL = 1500;
+const PLAYER_W = 34, PLAYER_H = 62;
+const COYOTE_TIME = 0.1;
+const JUMP_BUFFER = 0.12;
+const RESPAWN_DELAY = 0.6;      // auto respawn after death (s)
+const RESPAWN_SKIP = 0.12;      // input can skip the wait after this long
+const EPS = 0.01;
+
+/* =========================================================================
+   GAME STATE
+========================================================================= */
+const app = $('app');
+const stage = $('stage');
+const canvas = $('gameCanvas');
+const ctx = canvas.getContext('2d');
+const isFullscreenMode = !!root.querySelector('.dgm-wrap-full');
+const touchUI = !(window.matchMedia && window.matchMedia('(hover:hover) and (pointer:fine)').matches);
+if(isFullscreenMode) document.documentElement.classList.add('dgm-lock-scroll');
+root.classList.toggle('dgm-touch', touchUI);
+
+let currentLevelIndex = 0;
+let levelState = null;
+let gameState = 'menu'; // menu | playing | paused | dead | won
+const keys = { left:false, right:false, jump:false };
+let jumpPressedAt = -10;
+let simTime = 0;
+let accumulator = 0;
+let lastFrame = 0;
+let loopPaused = false;  // debug: stop the rAF loop from advancing the simulation
+const camera = { x:0, y:0, shake:0 };
+const view = { scale:1, w:1600, h:VH, offY:0, band:0, cssW:0, cssH:0, dpr:1, padL:0, padR:0 };
+let particles = [];
+let checkpointIndex = -1;    // persists across deaths within the current level attempt
+let attemptDeaths = 0;       // deaths since the level was (re)entered
+let attemptTime = 0;
+
+function cloneRect(o){ return Object.assign({}, o); }
+
+function makeLevelState(data){
+  const plats = data.platforms.map(p=>Object.assign(cloneRect(p), {
+    cx:p.x, cy:p.y, px:p.x, py:p.y, dx:0, dy:0,
+    triggered:false, timer:0, removed:false, shake:0, discovered:false, cracked:false,
+    dir:1, waitT:(p.path && p.path.pauseStart) || 0, legDist:0
+  }));
+  const hazards = data.hazards.map(h=>{
+    const o = Object.assign(cloneRect(h), {cx:h.path ? h.path.x1 : h.x, cy:h.path ? h.path.y1 : h.y, dir:1,
+      waitT:(h.path && h.path.pauseStart) || 0, legDist:0, shake:0, done:false});
+    if(h.type === 'hiddenSpike'){ o.revealed = false; o.popT = 0; }
+    if(h.type === 'fallingCeiling'){ o.state = 'idle'; o.stateT = 0; o.py = h.y; }
+    if(h.type === 'chaser'){ o.running = false; o.front = h.startX; }
+    return o;
+  });
+  const triggers = (data.triggers || []).map(t=>Object.assign(cloneRect(t), {fired:false}));
+  const goal = Object.assign(cloneRect(data.goal), {moving:null, fakeLeft:data.goal.fakeCount || 0, cooldown:0});
+  const cp = checkpointIndex >= 0 && data.checkpoints ? data.checkpoints[checkpointIndex] : null;
+  if(cp){
+    // Respawning at a checkpoint: traps triggered behind it have already
+    // sprung on the way here. One-shot rushers rest at the end of their run
+    // and those triggers cannot fire again.
+    for(const tr of triggers){
+      if(tr.x + tr.w > cp.x - 20) continue;
+      tr.fired = true;
+      for(const a of (tr.actions || [])){
+        const h = a.do === 'start' ? hazards[a.hazard] : null;
+        if(h && h.path && h.path.once){ h.idle = false; h.done = true; h.cx = h.path.x2; h.cy = h.path.y2; }
+      }
+    }
+  }
+  const sx = cp ? cp.x - PLAYER_W/2 : data.spawn.x;
+  const sy = cp ? cp.y - PLAYER_H : data.spawn.y;
+  return {
+    data, plats, hazards, triggers, goal,
+    hillsFar: makeHillLayer(data.id*7.3, data.width+2400, 690, 110),
+    hillsNear: makeHillLayer(data.id*7.3+3.1, data.width+2400, 685, 70),
+    player:{
+      x:sx, y:sy, vx:0, vy:0, w:PLAYER_W, h:PLAYER_H,
+      grounded:true, wasGrounded:true, facing:1, state:'idle', stateT:0, t:0, idleT:0,
+      coyote:0, standingOn:null, landTimer:0, fallDist:0, dead:false, won:false,
+      jumping:false, spawnT:0, bumpTimer:0, locoPhase:0, airTime:0, accelLean:0
+    },
+    elapsed:0, deadT:0, winT:0, flash:0
+  };
+}
+
+function loadLevel(index){
+  hideClearBanner();
+  currentLevelIndex = Math.max(0, Math.min(LEVELS.length-1, index));
+  checkpointIndex = -1;
+  attemptDeaths = 0;
+  attemptTime = 0;
+  segDeaths = {};
+  spawnLevel(true);
+  updateHud();
+  showLevelToast(LEVELS[currentLevelIndex]);
+  showLearnCard(LEVELS[currentLevelIndex]);
+  maybeRotateHint();
+}
+
+/* =========================================================================
+   TEACHING CARDS AND HINTS
+   A level's new elements are named on a card when it starts. Dying twice
+   at the same obstacle shows that obstacle's hint until you get past it.
+========================================================================= */
+let segDeaths = {};
+let tipTimer = null, tipSeg = null;
+function showTip(badge, items, secs, cls){
+  const box = $('tipBox'), body = $('tipBody');
+  $('tipBadge').textContent = badge;
+  body.textContent = '';
+  for(const it of items){
+    const row = document.createElement('div');
+    row.className = 'tip-row';
+    if(it.t){ const b = document.createElement('b'); b.textContent = it.t; row.appendChild(b); }
+    const sp = document.createElement('span'); sp.textContent = it.d; row.appendChild(sp);
+    body.appendChild(row);
+  }
+  box.className = 'tip-box show ' + (cls || '');
+  clearTimeout(tipTimer);
+  tipTimer = secs ? setTimeout(hideTip, secs*1000) : null;
+}
+function hideTip(){ clearTimeout(tipTimer); tipTimer = null; tipSeg = null; $('tipBox').className = 'tip-box'; }
+function showLearnCard(data){
+  hideTip();
+  if(!data.learn || !data.learn.length) return;
+  const id = data.id;
+  setTimeout(()=>{
+    if(gameState === 'playing' && LEVELS[currentLevelIndex].id === id && !tipSeg)
+      showTip(data.learn.length > 1 ? 'NEW IN THIS LEVEL' : 'NEW', data.learn, 4 + 2.2*data.learn.length, 'learn');
+  }, 1300);
+}
+function segmentAt(data, x){
+  const segs = data.segs || [];
+  for(let i=0;i<segs.length;i++) if(x >= segs[i].x0 && x < segs[i].x1) return i;
+  return segs.length ? (x < segs[0].x0 ? 0 : segs.length - 1) : -1;
+}
+function hintFor(data, key){
+  return (data.hints && data.hints[key]) || SEG_HINTS[key] || '';
+}
+function noteDeathForHints(ls, reason){
+  const data = ls.data, p = ls.player;
+  let key, segIdx = -1;
+  if(reason === 'chaser'){ key = 'chase'; }
+  else {
+    segIdx = segmentAt(data, p.x + p.w/2);
+    if(segIdx < 0) return;
+    key = data.segs[segIdx].kind;
+  }
+  const k = reason === 'chaser' ? 'chase' : 's' + segIdx;
+  segDeaths[k] = (segDeaths[k] || 0) + 1;
+  if(segDeaths[k] < 2) return;
+  const text = hintFor(data, key);
+  if(!text) return;
+  tipSeg = segIdx >= 0 ? data.segs[segIdx] : {x1:Infinity};
+  showTip('HINT', [{d:text}], 0, 'hint');
+}
+// Hide a hint once the player is past the obstacle it is about.
+function updateTip(ls){
+  if(tipSeg && ls.player.x > tipSeg.x1 + 40) hideTip();
+}
+
+// Phones held upright see a narrower world; suggest landscape once per session.
+let rotateHintShown = false;
+function maybeRotateHint(){
+  if(rotateHintShown || !touchUI || view.band <= 1) return;
+  rotateHintShown = true;
+  setTimeout(()=>{ if(gameState === 'playing' && view.band > 1) showToast('Tip: turn your phone sideways for a bigger view'); }, 1700);
+}
+
+function spawnLevel(snapCamera){
+  levelState = makeLevelState(LEVELS[currentLevelIndex]);
+  particles = [];
+  jumpPressedAt = -10;
+  gameState = 'playing';
+  hideAllOverlays();
+  if(snapCamera !== false) snapCameraToPlayer();
+}
+
+function respawn(){
+  if(gameState !== 'dead' && gameState !== 'playing') return;
+  spawnLevel(true);
+  if(!save.settings.reducedMotion) spawnPuff(levelState.player.x+PLAYER_W/2, levelState.player.y+PLAYER_H, 8);
+  Sound.respawn();
+}
+
+function restartLevel(){
+  // Full restart: clears the checkpoint too.
+  checkpointIndex = -1;
+  attemptTime = 0;
+  spawnLevel(true);
+  updateHud();
+}
+
+/* =========================================================================
+   INPUT
+   Keys are only captured while the game is "active": always in fullscreen
+   mode, otherwise after the player clicks/taps inside the game until they
+   interact with the page outside it. Form fields are never intercepted.
+========================================================================= */
+const keyMap = {
+  ArrowLeft:'left', KeyA:'left',
+  ArrowRight:'right', KeyD:'right',
+  ArrowUp:'jump', KeyW:'jump', Space:'jump'
+};
+let pointerActive = isFullscreenMode;
+document.addEventListener('pointerdown', (e)=>{
+  pointerActive = isFullscreenMode || root.contains(e.target);
+}, true);
+
+function isTypingTarget(t){
+  if(!t || t === document.body) return false;
+  const tag = t.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable;
+}
+function gameHasKeyboard(){
+  return pointerActive || root.contains(document.activeElement);
+}
+function anyOverlayOpen(){
+  return !!root.querySelector('.overlay.show') || !$('startScreen').hidden;
+}
+
+window.addEventListener('keydown', (e)=>{
+  if(isTypingTarget(e.target) || !gameHasKeyboard()) return;
+  if(e.ctrlKey || e.metaKey || e.altKey) return;
+  const code = e.code;
+
+  if(gameState === 'won' && !anyOverlayOpen()){
+    // no popup: the next level starts by itself; Jump/Enter skips the wait
+    if(code === 'Enter' || code === 'Space' || code === 'ArrowUp' || code === 'KeyW'){
+      e.preventDefault();
+      if(!e.repeat && levelState.winT > 0.3) advanceAfterWin();
+    }
+    if(code === 'Escape' || code === 'KeyP'){ e.preventDefault(); openMenu(); }
+    return;
+  }
+  if(anyOverlayOpen()){
+    if(code === 'Escape'){
+      e.preventDefault();
+      if(gameState === 'paused' && $('pauseOverlay').classList.contains('show')) resumeGame();
+      else if($('settingsOverlay').classList.contains('show')) closeSettings();
+      else if($('menuOverlay').classList.contains('show')) closeMenu();
+      else if($('accountOverlay').classList.contains('show')) closeAccount();
+      else if($('boardOverlay').classList.contains('show')) closeBoard();
+    }
+    return; // let Tab/Enter/Space operate the focused overlay button normally
+  }
+
+  if(code === 'Escape' || code === 'KeyP'){ e.preventDefault(); togglePause(); return; }
+  if(code === 'KeyR'){ e.preventDefault(); Sound.unlock(); if(gameState === 'playing' || gameState === 'dead') restartLevel(); return; }
+
+  const k = keyMap[code];
+  if(!k) return;
+  e.preventDefault();
+  Sound.unlock();
+  if(gameState === 'dead'){
+    if(!e.repeat && (k === 'jump' || code === 'Enter') && levelState.deadT >= RESPAWN_SKIP) respawn();
+    keys[k] = true;
+    return;
+  }
+  if(k === 'jump' && !e.repeat && !keys.jump) jumpPressedAt = simTime;
+  keys[k] = true;
+});
+window.addEventListener('keyup', (e)=>{
+  const k = keyMap[e.code];
+  if(k) keys[k] = false;
+});
+function clearKeys(){ keys.left = keys.right = keys.jump = false; setTouchActive(null); }
+window.addEventListener('blur', ()=>{ clearKeys(); if(gameState === 'playing') pauseGame(); });
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden){ clearKeys(); if(gameState === 'playing') pauseGame(); Sound.suspend(); }
+  else Sound.resume();
+});
+
+/* Touch controls. The d-pad is one zone so a thumb can slide between
+   left and right; the jump button is separate for multi-touch. */
+const btnLeft = $('btnLeft'), btnRight = $('btnRight'), btnJump = $('btnJump'), dpad = $('dpad');
+function setTouchActive(dir){
+  btnLeft.classList.toggle('active', dir === 'left');
+  btnRight.classList.toggle('active', dir === 'right');
+}
+let dpadPointer = null;
+function dpadDirAt(clientX){
+  const r = dpad.getBoundingClientRect();
+  return clientX < r.left + r.width/2 ? 'left' : 'right';
+}
+function dpadUpdate(e){
+  const dir = dpadDirAt(e.clientX);
+  keys.left = dir === 'left'; keys.right = dir === 'right';
+  setTouchActive(dir);
+}
+dpad.addEventListener('pointerdown', (e)=>{
+  e.preventDefault(); Sound.unlock();
+  dpadPointer = e.pointerId;
+  try{ dpad.setPointerCapture(e.pointerId); }catch(err){}
+  dpadUpdate(e);
+});
+dpad.addEventListener('pointermove', (e)=>{ if(e.pointerId === dpadPointer) dpadUpdate(e); });
+function dpadEnd(e){
+  if(e.pointerId !== dpadPointer) return;
+  dpadPointer = null; keys.left = keys.right = false; setTouchActive(null);
+}
+dpad.addEventListener('pointerup', dpadEnd);
+dpad.addEventListener('pointercancel', dpadEnd);
+dpad.addEventListener('lostpointercapture', dpadEnd);
+
+btnJump.addEventListener('pointerdown', (e)=>{
+  e.preventDefault(); Sound.unlock();
+  try{ btnJump.setPointerCapture(e.pointerId); }catch(err){}
+  btnJump.classList.add('active');
+  if(gameState === 'dead'){ if(levelState.deadT >= RESPAWN_SKIP) respawn(); }
+  else if(!keys.jump) jumpPressedAt = simTime;
+  keys.jump = true;
+});
+function jumpEnd(){ keys.jump = false; btnJump.classList.remove('active'); }
+btnJump.addEventListener('pointerup', jumpEnd);
+btnJump.addEventListener('pointercancel', jumpEnd);
+btnJump.addEventListener('lostpointercapture', jumpEnd);
+[dpad, btnLeft, btnRight, btnJump].forEach(el=>el.addEventListener('contextmenu', e=>e.preventDefault()));
+
+// Tapping the play area while dead skips the respawn wait.
+canvas.addEventListener('pointerdown', ()=>{
+  Sound.unlock();
+  if(gameState === 'dead' && levelState.deadT >= RESPAWN_SKIP) respawn();
+});
+
+/* =========================================================================
+   PHYSICS / COLLISION
+========================================================================= */
+function rectOverlap(a,b){
+  return a.x < b.x+b.w && a.x+a.w > b.x && a.y < b.y+b.h && a.y+a.h > b.y;
+}
+function platRect(p){ return {x:p.cx, y:p.cy, w:p.w, h:p.h}; }
+
+function solidsOf(ls){
+  const list = [];
+  for(const p of ls.plats){
+    if(p.removed) continue;
+    list.push({x:p.cx, y:p.cy, w:p.w, h:p.h, px:p.px, py:p.py, ref:p});
+  }
+  for(const h of ls.hazards){
+    if(h.type === 'fallingCeiling' && h.state === 'rested'){
+      list.push({x:h.x, y:h.y, w:h.w, h:h.h, px:h.x, py:h.y, ref:h});
+    }
+  }
+  return list;
+}
+
+function advancePath(o, dt){
+  const path = o.path;
+  o.px = o.cx; o.py = o.cy;
+  o.dx = 0; o.dy = 0;
+  if(o.idle || o.done) return;             // waiting for a trigger / one-shot finished
+  if(o.waitT > 0){ o.waitT -= dt; return; }
+  const ddx = path.x2-path.x1, ddy = path.y2-path.y1;
+  const len = Math.hypot(ddx, ddy) || 1;
+  o.legDist += path.speed*dt;
+  if(o.legDist >= len){
+    if(path.once){ o.cx = path.x2; o.cy = path.y2; o.done = true; o.dx = o.cx - o.px; o.dy = o.cy - o.py; return; }
+    o.legDist = 0;
+    o.waitT = path.pause || 0;
+    if(o.dir > 0){ o.cx = path.x2; o.cy = path.y2; o.dir = -1; }
+    else { o.cx = path.x1; o.cy = path.y1; o.dir = 1; }
+  } else {
+    const f = o.legDist/len;
+    if(o.dir > 0){ o.cx = path.x1 + ddx*f; o.cy = path.y1 + ddy*f; }
+    else { o.cx = path.x2 - ddx*f; o.cy = path.y2 - ddy*f; }
+  }
+  o.dx = o.cx - o.px; o.dy = o.cy - o.py;
+}
+
+function updateWorld(ls, dt){
+  for(const p of ls.plats){
+    p.px = p.cx; p.py = p.cy; p.dx = 0; p.dy = 0;
+    if(p.removed) continue;
+    if(p.type === 'moving' && p.path) advancePath(p, dt);
+    if(p.slide){
+      // floor pulled away by a trigger (eased tween; riders are carried via dx/dy)
+      const sl = p.slide;
+      sl.t = Math.min(sl.dur, sl.t + dt);
+      const f = sl.t/sl.dur, e = 1 - Math.pow(1 - f, 3);
+      p.cx = sl.fx + (sl.tx - sl.fx)*e; p.cy = sl.fy + (sl.ty - sl.fy)*e;
+      p.dx = p.cx - p.px; p.dy = p.cy - p.py;
+      if(f >= 1){ p.slide = null; if(p.cy >= 900) p.removed = true; }
+    }
+    if(p.triggered){
+      p.timer += dt;
+      p.shake = save.settings.reducedMotion ? 0 : Math.sin(p.timer*60) * Math.min(4, p.timer*24);
+      const delay = (p.delay != null ? p.delay : 400)/1000;
+      if(!p.cracked && p.timer > delay*0.4){ p.cracked = true; Sound.crack(); }
+      if(p.timer >= delay){
+        p.removed = true;
+        spawnDebris(p.cx+p.w/2, p.cy+Math.min(p.h,60)/2, p.w);
+        Sound.collapse();
+        vibrate(HAPTIC.medium);
+      }
+    }
+  }
+  for(const h of ls.hazards){
+    if((h.type === 'saw' || h.type === 'spike') && h.path) advancePath(h, dt);
+    else if(h.type === 'hiddenSpike' && h.revealed) h.popT = Math.min(1, h.popT + dt/0.08);
+    else if(h.type === 'fallingCeiling') updateCeiling(ls, h, dt);
+    else if(h.type === 'chaser' && h.running){
+      h.front = Math.min(h.stopX, h.front + h.speed*dt);
+      if(!save.settings.reducedMotion) camera.shake = Math.max(camera.shake, 2.5);
+    }
+  }
+}
+
+function updateCeiling(ls, h, dt){
+  h.py = h.y;
+  if(h.state === 'warning'){
+    h.stateT += dt;
+    h.shake = save.settings.reducedMotion ? 0 : Math.sin(h.stateT*42)*3;
+    if(h.stateT >= (h.warningTime != null ? h.warningTime : 0.5)){ h.state = 'falling'; h.shake = 0; }
+  } else if(h.state === 'falling'){
+    h.y = Math.min(h.restY, h.y + (h.fallSpeed || 950)*dt);
+    if(h.y >= h.restY){
+      h.state = 'rested';
+      Sound.collapse();
+      vibrate(HAPTIC.medium);
+      camera.shake = Math.max(camera.shake, 8);
+      spawnDebris(h.x+h.w/2, h.y+h.h, h.w);
+    }
+  }
+}
+
+function startHazard(ls, h){
+  if(h.type === 'fallingCeiling' && h.state === 'idle'){
+    h.state = 'warning'; h.stateT = 0; Sound.warn(); vibrate(HAPTIC.small);
+  } else if(h.type === 'chaser' && !h.running){
+    h.running = true; Sound.rumble(); vibrate(HAPTIC.strong);
+  } else if(h.idle){
+    h.idle = false; Sound.trapReveal(); vibrate(HAPTIC.small);
+  }
+}
+function slidePlatform(p, to, dur){
+  if(!p || p.removed) return;
+  p.slide = { fx:p.cx, fy:p.cy, tx:to.x != null ? to.x : p.cx, ty:to.y != null ? to.y : p.cy, t:0, dur:dur || 0.25 };
+  Sound.doorMove(); vibrate(HAPTIC.small);
+}
+function revealHazard(h){
+  if(h.revealed) return;
+  h.revealed = true; h.popT = 0;
+  Sound.trapReveal(); vibrate(HAPTIC.medium);
+}
+function collapsePlatform(p, delay){
+  if(!p || p.removed || p.triggered) return;
+  p.triggered = true; p.timer = 0;
+  if(delay != null) p.delay = delay;
+}
+
+function runTriggerActions(ls, actions){
+  for(const a of actions){
+    if(a.do === 'collapse') collapsePlatform(ls.plats[a.plat], a.delay);
+    else if(a.do === 'reveal') revealHazard(ls.hazards[a.hazard]);
+    else if(a.do === 'start') startHazard(ls, ls.hazards[a.hazard]);
+    else if(a.do === 'moveGoal') moveGoal(ls, a.to);
+    else if(a.do === 'slide') slidePlatform(ls.plats[a.plat], a.to, a.dur);
+    else if(a.do === 'reverse'){
+      ls.reversed = !!a.on; ls.reverseFlash = 1;
+      if(a.on){ Sound.warn(); vibrate(HAPTIC.medium); camera.shake = Math.max(camera.shake, 5); }
+      else Sound.respawn();
+    }
+    else if(a.do === 'toast') showToast(a.text);
+  }
+}
+
+function moveGoal(ls, to){
+  const g = ls.goal;
+  g.moving = { fx:g.x, fy:g.y, tx:to.x, ty:to.y, t:0, dur:0.32 };
+  Sound.doorMove();
+  vibrate(HAPTIC.small);
+}
+
+function updatePlayer(ls, dt){
+  const p = ls.player;
+  const data = ls.data;
+
+  let moveDir = 0;
+  if(keys.left) moveDir -= 1;
+  if(keys.right) moveDir += 1;
+  if(data.reverseControls || ls.reversed) moveDir = -moveDir;
+
+  // horizontal velocity
+  const targetVx = moveDir*MOVE_SPEED;
+  const accel = p.grounded ? GROUND_ACCEL : AIR_ACCEL;
+  const decel = p.grounded ? GROUND_DECEL : AIR_DECEL;
+  if(targetVx !== 0){
+    const rate = (p.vx === 0 || Math.sign(targetVx) === Math.sign(p.vx)) ? accel : decel+accel;
+    if(p.vx < targetVx) p.vx = Math.min(p.vx + rate*dt, targetVx);
+    else if(p.vx > targetVx) p.vx = Math.max(p.vx - rate*dt, targetVx);
+    p.facing = moveDir;
+  } else if(p.vx > 0) p.vx = Math.max(0, p.vx - decel*dt);
+  else if(p.vx < 0) p.vx = Math.min(0, p.vx + decel*dt);
+
+  // jump (buffered press + coyote time), variable height on release
+  if(p.coyote > 0) p.coyote -= dt;
+  const sincePress = simTime - jumpPressedAt;
+  if(sincePress >= 0 && sincePress < JUMP_BUFFER && (p.grounded || p.coyote > 0)){
+    p.vy = JUMP_VELOCITY;
+    p.grounded = false; p.coyote = 0; p.jumping = true;
+    p.standingOn = null;
+    jumpPressedAt = -10;
+    Sound.jump();
+    spawnPuff(p.x+p.w/2, p.y+p.h, 5);
+  }
+  if(p.jumping && !keys.jump && p.vy < 0){ p.vy *= JUMP_CUT; p.jumping = false; }
+  if(p.vy >= 0) p.jumping = false;
+
+  p.vy = Math.min(p.vy + GRAVITY*dt, MAX_FALL);
+
+  // ride the platform we stood on last step
+  const ride = p.standingOn;
+  if(ride && !ride.removed){ p.x += ride.dx || 0; p.y += ride.dy || 0; }
+
+  const solids = solidsOf(ls);
+
+  // --- horizontal pass: decide sides from where both bodies were last step
+  const preX = p.x;
+  p.x += p.vx*dt;
+  p.x = Math.max(0, Math.min(p.x, data.width - p.w));
+  for(const s of solids){
+    if(!rectOverlap(p, s)) continue;
+    const wasLeft = preX + p.w <= Math.max(s.x, s.px) + EPS;
+    const wasRight = preX >= Math.min(s.x, s.px) + s.w - EPS;
+    const vOverlap = Math.min(p.y+p.h, s.y+s.h) - Math.max(p.y, s.y);
+    if(vOverlap <= 0.5) continue;
+    if(wasLeft && !wasRight){ p.x = s.x - p.w; bump(p); }
+    else if(wasRight && !wasLeft){ p.x = s.x + s.w; bump(p); }
+  }
+
+  // --- vertical pass
+  const preTop = p.y, preBottom = p.y + p.h;
+  p.y += p.vy*dt;
+  p.grounded = false;
+  let standOn = null;
+  for(const s of solids){
+    if(!rectOverlap(p, s)) continue;
+    // landing: our bottom was at/above the solid's top (previous or current,
+    // whichever is lower, so riders of descending platforms stay grounded)
+    // and we are not moving up faster than the solid.
+    if(preBottom <= Math.max(s.y, s.py) + 0.5 && p.vy >= Math.min(0, (s.y - s.py)/dt) - EPS){
+      p.y = s.y - p.h;
+      if(p.vy > 0) p.vy = 0;
+      p.grounded = true;
+      standOn = s.ref;
+    } else if(preTop >= Math.min(s.y, s.py) + s.h - 0.5 && p.vy < 0){
+      p.y = s.y + s.h;
+      p.vy = 0; p.jumping = false;
+    }
+  }
+
+  // --- depenetration: anything still overlapping is resolved along the
+  // shallowest axis; if that is impossible (squeezed) the player is crushed.
+  for(let pass=0; pass<2; pass++){
+    for(const s of solids){
+      if(!rectOverlap(p, s)) continue;
+      const pushL = (p.x + p.w) - s.x, pushR = (s.x + s.w) - p.x;
+      const pushU = (p.y + p.h) - s.y, pushD = (s.y + s.h) - p.y;
+      const m = Math.min(pushL, pushR, pushU, pushD);
+      if(m === pushU){ p.y -= pushU; if(p.vy > 0) p.vy = 0; p.grounded = true; standOn = s.ref; }
+      else if(m === pushD){ p.y += pushD; if(p.vy < 0) p.vy = 0; }
+      else if(m === pushL){ p.x -= pushL; }
+      else { p.x += pushR; }
+    }
+  }
+  // Squeezed between two solids (e.g. a ground edge and a returning moving
+  // platform): sideways pushes cancel out, so lift onto the surface if it is
+  // within a small step; otherwise it is a genuine crush.
+  const still = solids.filter(s=>rectOverlap(p, s));
+  if(still.length){
+    let lift = 0, top = null;
+    for(const s of still){ const d = p.y + p.h - s.y; if(d > lift){ lift = d; top = s; } }
+    const lifted = {x:p.x, y:p.y - lift, w:p.w, h:p.h};
+    if(lift <= 24 && !solids.some(s=>rectOverlap(lifted, s))){
+      p.y = lifted.y; if(p.vy > 0) p.vy = 0; p.grounded = true; standOn = top.ref;
+    } else {
+      for(const s of still){
+        const ox = Math.min(p.x+p.w, s.x+s.w) - Math.max(p.x, s.x);
+        const oy = Math.min(p.y+p.h, s.y+s.h) - Math.max(p.y, s.y);
+        if(ox > 1 && oy > 1){ killPlayer('crush'); return; }
+      }
+    }
+  }
+
+  if(p.grounded){
+    p.coyote = COYOTE_TIME;
+    if(!p.wasGrounded){
+      if(p.fallDist > 160){ Sound.landHeavy(); p.landTimer = 0.14; spawnPuff(p.x+p.w/2, p.y+p.h, 7); }
+      else if(p.fallDist > 20){ Sound.land(); p.landTimer = 0.1; spawnPuff(p.x+p.w/2, p.y+p.h, 4); }
+    }
+    p.fallDist = 0;
+  } else {
+    p.fallDist += Math.max(0, p.vy)*dt;
+  }
+  p.wasGrounded = p.grounded;
+  p.standingOn = p.grounded ? standOn : null;
+
+  // fell out of the world
+  if(p.y > data.height + 60){ killPlayer('fall'); return; }
+
+  // platforms that drop after being stood on
+  const sp = p.standingOn;
+  if(sp && sp.type === 'disappearing' && !sp.triggered) collapsePlatform(sp);
+
+  // invisible platform discovery
+  for(const pl of ls.plats){
+    if(pl.type === 'invisible' && !pl.discovered && !pl.removed){
+      if(rectOverlap({x:p.x-4, y:p.y-4, w:p.w+8, h:p.h+8}, platRect(pl))){
+        pl.discovered = true; pl.revealT = 0; Sound.trapReveal();
+      }
+    }
+  }
+
+  // trigger zones and zone-based hazards
+  const px0 = p.x, px1 = p.x + p.w;
+  for(const tr of ls.triggers){
+    if(tr.fired) continue;
+    if(px1 > tr.x && px0 < tr.x + tr.w){
+      tr.fired = true;
+      if(tr.actions) runTriggerActions(ls, tr.actions);
+      if(tr.targetIndex != null) collapsePlatform(ls.plats[tr.targetIndex]); // v1 schema
+    }
+  }
+  for(const hz of ls.hazards){
+    if(hz.type === 'hiddenSpike' && !hz.revealed && hz.revealTrigger){
+      if(px1 > hz.revealTrigger.x && px0 < hz.revealTrigger.x + hz.revealTrigger.w) revealHazard(hz);
+    } else if(hz.type === 'fallingCeiling' && hz.state === 'idle' && hz.triggerZone){
+      if(px1 > hz.triggerZone.x && px0 < hz.triggerZone.x + hz.triggerZone.w) startHazard(ls, hz);
+    }
+  }
+
+  // checkpoints
+  const cps = data.checkpoints || [];
+  for(let i=0;i<cps.length;i++){
+    if(i <= checkpointIndex) continue;
+    const c = cps[i];
+    if(px1 > c.x - 20 && px0 < c.x + 20 && p.y < c.y && p.y + p.h > c.y - 110){
+      checkpointIndex = i;
+      Sound.checkpoint(); vibrate(HAPTIC.small);
+      spawnSparkle(c.x + 14, c.y - 90);
+      showToast('Checkpoint');
+    }
+  }
+
+  // hazards
+  for(const hz of ls.hazards){
+    if(hazardHits(hz, p)){
+      killPlayer(hz.type === 'saw' ? 'saw' : hz.type === 'fallingCeiling' ? 'crush' : hz.type === 'chaser' ? 'chaser' : 'spike');
+      return;
+    }
+  }
+
+  updateGoal(ls, dt);
+  updateTip(ls);
+  updateAnimState(p, dt, moveDir);
+}
+
+function bump(p){
+  if(Math.abs(p.vx) > 120){
+    if(!(p.bumpTimer > 0)) Sound.wallBump();
+    p.bumpTimer = 0.14;
+  }
+  p.vx = 0;
+}
+
+function hazardHits(hz, p){
+  switch(hz.type){
+    case 'spike':
+    case 'hiddenSpike': {
+      if(hz.type === 'hiddenSpike' && !hz.revealed) return false;
+      const sx = hz.cx, sy = hz.cy;
+      return rectOverlap(p, {x:sx+hz.w*0.12, y:sy+(hz.flip ? 0 : hz.h*0.25), w:hz.w*0.76, h:hz.h*0.75});
+    }
+    case 'saw': {
+      const r = Math.min(hz.w, hz.h)*0.4;
+      const cx = hz.cx + hz.w/2, cy = hz.cy + hz.h/2;
+      const nx = Math.max(p.x, Math.min(cx, p.x+p.w));
+      const ny = Math.max(p.y, Math.min(cy, p.y+p.h));
+      return (cx-nx)*(cx-nx) + (cy-ny)*(cy-ny) < r*r;
+    }
+    case 'fallingCeiling': {
+      if(hz.state !== 'falling') return false;
+      // Any overlap with the descending block is lethal (its spikes face down).
+      return rectOverlap(p, {x:hz.x+4, y:hz.y, w:hz.w-8, h:hz.h});
+    }
+    case 'chaser':
+      return hz.running && p.x < hz.front - 6;
+  }
+  return false;
+}
+
+function updateGoal(ls, dt){
+  const p = ls.player, g = ls.goal;
+  if(g.cooldown > 0) g.cooldown -= dt;
+  if(g.moving){
+    const m = g.moving;
+    m.t += dt;
+    const f = Math.min(1, m.t/m.dur);
+    const e = f<0.5 ? 2*f*f : 1-Math.pow(-2*f+2, 2)/2;
+    g.x = m.fx + (m.tx-m.fx)*e;
+    g.y = m.fy + (m.ty-m.fy)*e - Math.sin(f*Math.PI)*60;
+    if(f >= 1){ g.x = m.tx; g.y = m.ty; g.moving = null; }
+    return;
+  }
+  const inner = {x:g.x+12, y:g.y+18, w:g.w-24, h:g.h-18};
+  if(!rectOverlap(p, inner)) return;
+  if(g.type === 'fake' && g.fakeLeft > 0){
+    if(g.cooldown > 0) return;
+    g.fakeLeft--;
+    g.cooldown = 0.5;
+    p.vx = -p.facing*430; p.vy = -320; p.grounded = false; p.standingOn = null; p.jumping = false;
+    Sound.recordScratch(); vibrate(HAPTIC.medium);
+    camera.shake = Math.max(camera.shake, 6);
+    showToast('The door disagrees.');
+    return;
+  }
+  triggerWin();
+}
+
+const STRIDE_LEN = 108;
+function updateAnimState(p, dt, moveDir){
+  p.t += dt; p.stateT += dt; p.idleT += dt;
+  if(p.spawnT < 1) p.spawnT = Math.min(1, p.spawnT + dt/0.18);
+  if(p.bumpTimer > 0) p.bumpTimer -= dt;
+  p.airTime = p.grounded ? 0 : p.airTime + dt;
+  const speedAbs = Math.abs(p.vx);
+  if(p.grounded) p.locoPhase = (p.locoPhase + (speedAbs/STRIDE_LEN)*dt*Math.PI*2) % (Math.PI*2);
+  if(moveDir !== 0 && speedAbs < MOVE_SPEED*0.85 && Math.sign(p.vx||moveDir) === Math.sign(moveDir)) p.accelLean = 0.14;
+  else if(moveDir === 0 && speedAbs > 15) p.accelLean = -0.12*Math.sign(p.vx);
+  else p.accelLean = 0;
+
+  if(p.won){ p.state = 'victory'; return; }
+  if(p.landTimer > 0){ p.landTimer -= dt; p.state = 'land'; return; }
+  if(!p.grounded){ p.state = p.vy < 0 ? 'jump' : 'fall'; return; }
+  if(moveDir === 0 && speedAbs < 8){ p.state = 'idle'; return; }
+  p.state = speedAbs > MOVE_SPEED*RUN_THRESHOLD ? 'run' : 'walk';
+  const phase = Math.floor(p.locoPhase/Math.PI);
+  if(phase !== p._lastStridePhase && speedAbs > 20){ p._lastStridePhase = phase; Sound.footstep(); }
+}
+
+/* =========================================================================
+   PARTICLES (capped so a burst never costs more than a few hundred rects)
+========================================================================= */
+const MAX_PARTICLES = 240;
+function pushParticle(pt){ if(particles.length < MAX_PARTICLES) particles.push(pt); }
+function spawnPuff(x, y, n){
+  if(save.settings.reducedMotion) return;
+  for(let i=0;i<n;i++){
+    pushParticle({x, y, vx:(Math.random()-0.5)*140, vy:-Math.random()*80-20, life:0.32, maxLife:0.32, size:3+Math.random()*3, color:'rgba(80,72,58,0.45)'});
+  }
+}
+function spawnDebris(x, y, spread){
+  const n = save.settings.reducedMotion ? 3 : 9;
+  for(let i=0;i<n;i++){
+    pushParticle({x:x+(Math.random()-0.5)*spread, y, vx:(Math.random()-0.5)*160, vy:-Math.random()*160, life:0.6, maxLife:0.6, size:5+Math.random()*5, color:'#1a1a1a', gravity:true});
+  }
+}
+function spawnDeathBurst(p, reason, impactVx, impactVy){
+  const cx = p.x + p.w/2, cy = p.y + p.h/2;
+  const hasDir = Math.hypot(impactVx, impactVy) > 30;
+  const dirA = Math.atan2(impactVy, impactVx);
+  // The stickman breaks into its own limbs: torso, 2 arms, 2 legs, head.
+  const limbs = save.settings.reducedMotion ? 3 : 6;
+  for(let i=0;i<limbs;i++){
+    const a = hasDir ? dirA + Math.PI + (Math.random()-0.5)*2.4 : -Math.PI/2 + (Math.random()-0.5)*2.6;
+    const sp = 220 + Math.random()*220;
+    pushParticle({
+      x:cx, y:cy - 10 + Math.random()*20, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp - 120,
+      life:0.9, maxLife:0.9, size: i === 5 ? 15 : 22 + Math.random()*6, color:'#161616',
+      gravity:true, collides:true, shape: i === 5 ? 'head' : 'line', rot:Math.random()*Math.PI*2, rotSpeed:(Math.random()-0.5)*16
+    });
+  }
+  if(reason !== 'fall' && !save.settings.reducedMotion){
+    for(let i=0;i<10;i++){
+      const a = Math.random()*Math.PI*2, sp = 120 + Math.random()*220;
+      pushParticle({x:cx, y:cy, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp - 80, life:0.45, maxLife:0.45, size:3+Math.random()*3, color:'#e0323c', gravity:true});
+    }
+  }
+}
+function spawnSparkle(x, y){
+  if(save.settings.reducedMotion) return;
+  for(let i=0;i<10;i++){
+    const a = Math.random()*Math.PI*2;
+    pushParticle({x, y, vx:Math.cos(a)*120, vy:Math.sin(a)*120-60, life:0.5, maxLife:0.5, size:3, color:'#f2b632', gravity:true});
+  }
+}
+const CONFETTI_COLORS = ['#e0323c','#f2b632','#1a1a1a','#fffdf8'];
+function spawnConfetti(x, y){
+  if(save.settings.reducedMotion) return;
+  for(let i=0;i<46;i++){
+    const a = -Math.PI/2 + (Math.random()-0.5)*2.2, sp = 220+Math.random()*260;
+    pushParticle({x, y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp, life:1+Math.random()*0.8, maxLife:1.8, size:3+Math.random()*3,
+      color:CONFETTI_COLORS[i%CONFETTI_COLORS.length], gravity:true, drag:0.99, shape:(i%3===0?'line':'sq'), rot:Math.random()*6.28, rotSpeed:(Math.random()-0.5)*10});
+  }
+}
+function updateParticles(dt){
+  if(!particles.length) return;
+  const solids = levelState ? solidsOf(levelState) : null;
+  for(const pt of particles){
+    const prevY = pt.y;
+    pt.x += pt.vx*dt; pt.y += pt.vy*dt;
+    if(pt.gravity) pt.vy += 1100*dt;
+    if(pt.drag){ pt.vx *= pt.drag; }
+    if(pt.rotSpeed) pt.rot += pt.rotSpeed*dt;
+    if(pt.collides && solids && pt.vy > 0){
+      for(const s of solids){
+        if(pt.x > s.x && pt.x < s.x+s.w && prevY <= s.y && pt.y >= s.y){
+          pt.y = s.y;
+          if(!pt.bounced && pt.vy > 120){ pt.vy *= -0.35; pt.vx *= 0.6; pt.bounced = true; pt.rotSpeed *= 0.5; }
+          else { pt.vy = 0; pt.vx *= 0.7; pt.rotSpeed = 0; }
+          break;
+        }
+      }
+    }
+    pt.life -= dt;
+  }
+  particles = particles.filter(pt=>pt.life > 0);
+}
+
+/* =========================================================================
+   DEATH / WIN
+========================================================================= */
+function killPlayer(reason){
+  if(gameState !== 'playing') return;
+  const ls = levelState, p = ls.player;
+  const ivx = p.vx, ivy = p.vy;
+  p.dead = true; p.vx = 0; p.vy = 0;
+  gameState = 'dead';
+  ls.deadT = 0;
+  ls.deathReason = reason;
+  attemptDeaths++;
+  save.totalDeaths++;
+  persistSave();
+  spawnDeathBurst(p, reason, ivx, ivy);
+  Sound.death(reason);
+  vibrate(HAPTIC.strong);
+  if(!save.settings.reducedMotion){ camera.shake = Math.max(camera.shake, 10); ls.flash = 1; }
+  updateHud();
+  noteDeathForHints(ls, reason);
+  const pool = (ls.data.deathMessages || []).concat(GLOBAL_DEATH_MESSAGES);
+  if(Math.random() < 0.5) showToast(pool[Math.floor(Math.random()*pool.length)]);
+}
+
+function triggerWin(){
+  if(gameState !== 'playing') return;
+  const ls = levelState, data = ls.data, p = ls.player;
+  p.won = true; p.vx = 0;
+  gameState = 'won';
+  hideTip();
+  ls.winT = 0;
+  if(save.completedLevels.indexOf(data.id) < 0) save.completedLevels.push(data.id);
+  const isFinale = currentLevelIndex + 1 >= LEVELS.length;
+  if(!isFinale) save.unlockedLevel = Math.max(save.unlockedLevel, LEVELS[currentLevelIndex+1].id); // never lowers progress
+  const st = isPlainObject(save.levelStats[data.id]) ? save.levelStats[data.id] : {};
+  st.clears = (parseInt(st.clears,10) || 0) + 1;
+  const t = Math.round(attemptTime*100)/100;
+  const prevBest = parseFloat(st.bestTime);
+  const newBest = !(prevBest > 0) || t < prevBest;
+  if(newBest) st.bestTime = t;
+  if(!(st.bestDeaths >= 0) || attemptDeaths < st.bestDeaths) st.bestDeaths = attemptDeaths;
+  save.levelStats[data.id] = st;
+  persistSave();
+  submitClear(data.id, attemptTime*1000, attemptDeaths);
+
+  if(isFinale){ Sound.finale(); vibrate(HAPTIC.strong); }
+  else { Sound.victory(); vibrate(HAPTIC.small); }
+  let stats = t.toFixed(2) + 's' + (newBest && st.clears > 1 ? ' \u00b7 BEST!' : '') + ' \u00b7 ' + attemptDeaths + (attemptDeaths === 1 ? ' death' : ' deaths');
+  if(isFinale){
+    stats += ' \u00b7 ' + save.totalDeaths + ' total';
+    const gx = ls.goal.x + ls.goal.w/2, gy = ls.goal.y + ls.goal.h/2;
+    spawnConfetti(gx, gy);
+    setTimeout(()=>spawnConfetti(gx, gy), 350);
+  }
+  showClearBanner(isFinale ? 'ALL ' + LEVELS.length + ' LEVELS CLEARED' : 'LEVEL ' + data.id + ' CLEAR', stats,
+    isFinale ? (data.completionMessage || '') : (touchUI ? 'Next level\u2026' : 'Next level\u2026  (Space to skip)'));
+  ls.winDelay = isFinale ? 4.2 : 1.35;
+  updateHud();
+}
+
+// After a clear the next level starts by itself (no popup to dismiss).
+// Level Select is always available from the pause menu / start screen.
+function advanceAfterWin(){
+  if(gameState !== 'won') return;
+  hideClearBanner();
+  hideTip();
+  if(currentLevelIndex + 1 < LEVELS.length){ loadLevel(currentLevelIndex + 1); return; }
+  // finished the whole game: back to the start screen
+  gameState = 'menu';
+  levelState = null;
+  $('startScreen').hidden = false;
+  animateIntro();
+  showToast('You beat every level. Pick any level to play again.');
+}
+function showClearBanner(title, stats, hint){
+  $('clearTitle').textContent = title;
+  $('clearStats').textContent = stats;
+  $('clearHint').textContent = hint;
+  const el = $('clearBanner');
+  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+}
+function hideClearBanner(){ $('clearBanner').classList.remove('show'); }
+
+/* =========================================================================
+   LAYOUT / RENDERING
+========================================================================= */
+function layout(){
+  const r = app.getBoundingClientRect();
+  let w = Math.max(1, Math.floor(r.width)), h = Math.max(1, Math.floor(r.height));
+  if(w/h > MAX_ASPECT) w = Math.floor(h*MAX_ASPECT); // ultra-wide: side bars
+  stage.style.width = w + 'px';
+  stage.style.height = h + 'px';
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const bw = Math.round(w*dpr), bh = Math.round(h*dpr);
+  if(canvas.width !== bw || canvas.height !== bh){ canvas.width = bw; canvas.height = bh; }
+  view.cssW = w; view.cssH = h; view.dpr = dpr;
+  view.scale = Math.min(h/VH, w/MIN_VIEW_W);
+  view.w = w/view.scale;
+  view.h = h/view.scale;
+  const extra = Math.max(0, view.h - VH);
+  view.band = touchUI ? Math.min(extra, TOUCH_BAND_CSS/view.scale) : 0;
+  view.offY = extra - view.band;
+  root.classList.toggle('dgm-portrait', view.band > 1);
+  stage.style.setProperty('--dgm-band', Math.round(view.band*view.scale) + 'px');
+  // Touch layouts without a control band (landscape): let the camera run
+  // past the level edges far enough that the spawn point and the exit are
+  // never hidden under the d-pad or the jump button.
+  view.padL = view.padR = 0;
+  if(touchUI && view.band <= 1){
+    const st = stage.getBoundingClientRect();
+    const dp = dpad.getBoundingClientRect(), jb = btnJump.getBoundingClientRect();
+    if(dp.width) view.padL = Math.max(0, (dp.right - st.left + 24)/view.scale - 60);
+    if(jb.width) view.padR = Math.max(0, (st.right - jb.left + 24)/view.scale - 80);
+  }
+}
+if(typeof ResizeObserver === 'function') new ResizeObserver(()=>layout()).observe(app);
+window.addEventListener('resize', layout);
+window.addEventListener('orientationchange', ()=>setTimeout(layout, 120));
+
+function cameraTarget(ls){
+  const p = ls.player;
+  const minX = -view.padL;
+  const maxX = ls.data.width - view.w + view.padR;
+  if(maxX <= minX) return (minX + maxX)/2;
+  const tx = p.x + p.w/2 - view.w*0.4 + p.facing*view.w*0.04;
+  return Math.max(minX, Math.min(tx, maxX));
+}
+function snapCameraToPlayer(){ if(levelState) camera.x = cameraTarget(levelState); }
+function updateCamera(ls, dt){
+  const tx = cameraTarget(ls);
+  camera.x += (tx - camera.x) * (1 - Math.exp(-dt*7));
+  camera.shake = Math.max(0, camera.shake - dt*40);
+}
+
+function makeHillLayer(seed, width, baseY, amplitude){
+  const pts = [];
+  const segments = Math.max(8, Math.floor(width/220));
+  for(let i=0;i<=segments;i++){
+    const x = (width/segments)*i - 1200;
+    const n = Math.sin(i*1.3+seed)*0.6 + Math.sin(i*0.6+seed*1.7)*0.4;
+    pts.push({x, y: baseY - amplitude*0.5 - n*amplitude*0.5});
+  }
+  return pts;
+}
+function drawHillLayer(pts, color, factor){
+  ctx.save();
+  ctx.translate(-camera.x*factor, 0);
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.lineTo(pts[pts.length-1].x, VH);
+  ctx.lineTo(pts[0].x, VH);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.restore();
+}
+
+const COL = { sky:'#efe9dc', far:'#e5dcc7', near:'#d9cfb4', ink:'#1a1a1a', inkHi:'#323232', red:'#e0323c', redDark:'#b91c26', gold:'#f2b632', cream:'#fffdf8', deck:'#24221e' };
+
+function draw(){
+  const s = view.scale*view.dpr;
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.fillStyle = COL.sky;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if(!levelState) return;
+  const ls = levelState;
+  let shx = 0, shy = 0;
+  if(camera.shake > 0.2 && !save.settings.reducedMotion){
+    shx = (Math.random()-0.5)*camera.shake; shy = (Math.random()-0.5)*camera.shake;
+  }
+  ctx.setTransform(s, 0, 0, s, 0, 0);
+  ctx.translate(shx, view.offY + shy);
+
+  drawHillLayer(ls.hillsFar, COL.far, 0.25);
+  drawHillLayer(ls.hillsNear, COL.near, 0.5);
+
+  ctx.save();
+  ctx.translate(-camera.x, 0);
+  drawAnnotations(ls.data.annotations);
+  drawCheckpoints(ls);
+  drawGoal(ls);
+  drawPlatforms(ls);
+  drawHazards(ls);
+  drawParticles();
+  if(!ls.player.dead) drawPlayer(ls.player);
+  drawChasers(ls);
+  ctx.restore();
+
+  // touch-control deck under the world (portrait only)
+  if(view.band > 0){
+    ctx.fillStyle = COL.deck;
+    ctx.fillRect(-10, VH, view.w + 20, view.band + 10);
+    ctx.fillStyle = 'rgba(224,50,60,0.55)';
+    ctx.fillRect(-10, VH, view.w + 20, 3/view.scale);
+  }
+
+  if(ls.reversed || ls.reverseFlash > 0) drawReverseBanner(ls);
+
+  if(ls.flash > 0){
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.fillStyle = 'rgba(224,50,60,' + (ls.flash*0.14).toFixed(3) + ')';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+}
+
+// Screen-space warning while left/right are swapped.
+function drawReverseBanner(ls){
+  const k = ls.reversed ? 1 : ls.reverseFlash;
+  ls.reverseFlash = Math.max(0, (ls.reverseFlash || 0) - 0.04);
+  const s = view.dpr, cw = canvas.width, y = (view.cssW < 640 ? 118 : 104)*s;
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.globalAlpha = Math.min(1, k) * (ls.reversed ? 0.85 + 0.15*Math.sin(ls.elapsed*10) : 1);
+  const txt = ls.reversed ? '\u21c4  CONTROLS REVERSED  \u21c4' : 'CONTROLS NORMAL';
+  ctx.font = '900 ' + Math.round(15*s) + 'px Inter, system-ui, sans-serif';
+  const w = ctx.measureText(txt).width + 36*s, h = 32*s;
+  ctx.fillStyle = ls.reversed ? COL.red : COL.ink;
+  roundRect(cw/2 - w/2, y, w, h, 10*s); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(txt, cw/2, y + h/2 + 1*s);
+  ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic'; ctx.globalAlpha = 1;
+}
+
+function roundRect(x, y, w, h, r){
+  r = Math.min(r, w/2, h/2);
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.arcTo(x+w, y, x+w, y+h, r);
+  ctx.arcTo(x+w, y+h, x, y+h, r);
+  ctx.arcTo(x, y+h, x, y, r);
+  ctx.arcTo(x, y, x+w, y, r);
+  ctx.closePath();
+}
+
+function drawPlatforms(ls){
+  const x0 = camera.x - 50, x1 = camera.x + view.w + 50;
+  for(const p of ls.plats){
+    if(p.removed) continue;
+    if(p.cx > x1 || p.cx + p.w < x0) continue;
+    let alpha = 1;
+    if(p.type === 'invisible'){
+      if(!p.discovered) continue;
+      p.revealT = Math.min(1, (p.revealT || 0) + 0.06);
+      alpha = 0.35 + 0.4*p.revealT;
+    }
+    const x = p.cx + (p.shake || 0), y = p.cy;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = COL.ink;
+    roundRect(x, y, p.w, p.h, 8);
+    ctx.fill();
+    // subtle top lip keeps edges readable against the dark mass
+    ctx.fillStyle = COL.inkHi;
+    ctx.fillRect(x+6, y+3, p.w-12, 3);
+    if(p.type === 'moving'){
+      ctx.strokeStyle = 'rgba(26,26,26,0.22)';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([10, 10]);
+      ctx.beginPath();
+      ctx.moveTo(p.path.x1 + p.w/2, p.path.y1 + p.h/2);
+      ctx.lineTo(p.path.x2 + p.w/2, p.path.y2 + p.h/2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = COL.cream;
+      ctx.beginPath(); ctx.arc(x+14, y+p.h/2, 3, 0, 6.283); ctx.arc(x+p.w-14, y+p.h/2, 3, 0, 6.283); ctx.fill();
+    }
+    if(p.triggered){
+      ctx.strokeStyle = 'rgba(224,50,60,0.85)';
+      ctx.lineWidth = 3;
+      const ch = Math.min(p.h, 70);
+      ctx.beginPath();
+      ctx.moveTo(x+p.w*0.2, y+2); ctx.lineTo(x+p.w*0.35, y+ch*0.5); ctx.lineTo(x+p.w*0.28, y+ch);
+      ctx.moveTo(x+p.w*0.7, y+2); ctx.lineTo(x+p.w*0.58, y+ch*0.45); ctx.lineTo(x+p.w*0.66, y+ch*0.9);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawSpikeTeeth(x, y, w, h, color){
+  const n = Math.max(2, Math.round(w/13));
+  const sw = w/n, baseY = y+h;
+  ctx.fillStyle = color || COL.red;
+  ctx.beginPath();
+  for(let i=0;i<n;i++){
+    const jitter = (i%3===1) ? 0.8 : (i%3===2 ? 0.92 : 1);
+    const x0 = x + i*sw;
+    ctx.moveTo(x0+0.5, baseY);
+    ctx.lineTo(x0+sw/2, baseY - h*jitter);
+    ctx.lineTo(x0+sw-0.5, baseY);
+  }
+  ctx.fill();
+}
+function drawDownTeeth(x, y, w, h, color){
+  const n = Math.max(2, Math.round(w/14));
+  const sw = w/n;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  for(let i=0;i<n;i++){
+    const x0 = x + i*sw;
+    ctx.moveTo(x0+0.5, y); ctx.lineTo(x0+sw/2, y+h); ctx.lineTo(x0+sw-0.5, y);
+  }
+  ctx.fill();
+}
+
+let sawSpin = 0;
+function drawHazards(ls){
+  sawSpin += save.settings.reducedMotion ? 0.06 : 0.22;
+  for(const hz of ls.hazards){
+    if(hz.type === 'chaser') continue;
+    if(hz.type === 'hiddenSpike'){
+      if(!hz.revealed) continue;
+      const k = hz.popT;
+      drawSpikeTeeth(hz.x, hz.y + hz.h*(1-k), hz.w, hz.h*k);
+      continue;
+    }
+    if(hz.type === 'saw'){
+      const cx = hz.cx + hz.w/2, cy = hz.cy + hz.h/2, r = Math.min(hz.w, hz.h)/2;
+      if(hz.path){
+        ctx.strokeStyle = 'rgba(26,26,26,0.18)'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(hz.path.x1+hz.w/2, hz.path.y1+hz.h/2); ctx.lineTo(hz.path.x2+hz.w/2, hz.path.y2+hz.h/2); ctx.stroke();
+      }
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(sawSpin);
+      ctx.fillStyle = COL.red;
+      ctx.beginPath();
+      const teeth = 12;
+      for(let i=0;i<teeth;i++){
+        const a0 = (i/teeth)*6.2832, a1 = ((i+0.5)/teeth)*6.2832;
+        ctx.lineTo(Math.cos(a0)*r*0.74, Math.sin(a0)*r*0.74);
+        ctx.lineTo(Math.cos(a1)*r, Math.sin(a1)*r);
+      }
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = COL.ink;
+      ctx.beginPath(); ctx.arc(0, 0, r*0.42, 0, 6.2832); ctx.fill();
+      ctx.fillStyle = COL.red;
+      ctx.beginPath(); ctx.arc(0, 0, r*0.12, 0, 6.2832); ctx.fill();
+      ctx.restore();
+      continue;
+    }
+    if(hz.type === 'fallingCeiling'){
+      const x = hz.x + (hz.shake || 0), y = hz.y;
+      const bodyH = hz.h*0.62;
+      const warn = hz.state === 'warning';
+      if(hz.state !== 'rested'){
+        // chain to the ceiling so it reads as "hanging", not floating
+        ctx.strokeStyle = 'rgba(26,26,26,0.35)'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(x+hz.w*0.25, -400); ctx.lineTo(x+hz.w*0.25, y); ctx.moveTo(x+hz.w*0.75, -400); ctx.lineTo(x+hz.w*0.75, y); ctx.stroke();
+      }
+      ctx.fillStyle = COL.ink;
+      roundRect(x, y, hz.w, bodyH, 5); ctx.fill();
+      if(hz.state === 'rested'){
+        ctx.fillStyle = COL.ink;
+        ctx.fillRect(x, y+bodyH-6, hz.w, hz.h-bodyH+6);
+        ctx.fillStyle = COL.inkHi; ctx.fillRect(x+6, y+3, hz.w-12, 3);
+      } else {
+        drawDownTeeth(x, y+bodyH, hz.w, hz.h-bodyH, COL.red);
+        if(warn && Math.floor(hz.stateT*14)%2 === 0){
+          ctx.strokeStyle = COL.red; ctx.lineWidth = 4;
+          roundRect(x-4, y-4, hz.w+8, bodyH+8, 7); ctx.stroke();
+        }
+        ctx.fillStyle = warn ? COL.red : COL.cream;
+        ctx.font = '900 34px Inter, system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('!', x+hz.w/2, y+bodyH*0.78);
+        ctx.textAlign = 'start';
+      }
+      continue;
+    }
+    if(hz.type === 'spike'){
+      if(hz.flip) drawDownTeeth(hz.cx, hz.cy, hz.w, hz.h, COL.red);
+      else drawSpikeTeeth(hz.cx, hz.cy, hz.w, hz.h);
+      if(hz.path && hz.idle && hz.path.once && !hz.noTrack){
+        // a resting "rusher": faint track shows where it will go
+        ctx.strokeStyle = 'rgba(224,50,60,0.18)'; ctx.lineWidth = 3; ctx.setLineDash([6, 8]);
+        ctx.beginPath(); ctx.moveTo(hz.path.x1+hz.w/2, hz.path.y1+hz.h+4); ctx.lineTo(hz.path.x2+hz.w/2, hz.path.y2+hz.h+4); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+  }
+}
+
+function drawChasers(ls){
+  for(const hz of ls.hazards){
+    if(hz.type !== 'chaser' || hz.front < camera.x - 400) continue;
+    const f = hz.front;
+    const left = Math.max(camera.x - 200, f - 3000);
+    const top = -view.offY - 50, bottom = VH + view.band + 50;
+    ctx.fillStyle = COL.ink;
+    ctx.fillRect(left, top, f - 26 - left, bottom - top);
+    // red sawtooth edge, scrolling while it moves
+    const tooth = 36, off = hz.running ? (hz.front % tooth) : 0;
+    ctx.fillStyle = COL.red;
+    ctx.beginPath();
+    for(let y = top - tooth + off; y < bottom; y += tooth){
+      ctx.moveTo(f - 28, y); ctx.lineTo(f, y + tooth/2); ctx.lineTo(f - 28, y + tooth);
+    }
+    ctx.fill();
+    if(hz.running && !save.settings.reducedMotion){
+      ctx.strokeStyle = 'rgba(26,26,26,0.25)'; ctx.lineWidth = 3;
+      for(let i=0;i<5;i++){
+        const yy = 120 + i*150 + ((ls.elapsed*400 + i*77) % 60);
+        ctx.beginPath(); ctx.moveTo(f + 14, yy); ctx.lineTo(f + 44 + (i%2)*20, yy); ctx.stroke();
+      }
+    }
+  }
+}
+
+function drawCheckpoints(ls){
+  const cps = ls.data.checkpoints || [];
+  for(let i=0;i<cps.length;i++){
+    const c = cps[i], on = i <= checkpointIndex;
+    ctx.fillStyle = COL.ink;
+    ctx.fillRect(c.x - 2, c.y - 110, 5, 110);
+    const wave = on && !save.settings.reducedMotion ? Math.sin(ls.elapsed*6)*4 : 0;
+    ctx.beginPath();
+    ctx.moveTo(c.x + 3, c.y - 108);
+    ctx.lineTo(c.x + 46, c.y - 96 + wave);
+    ctx.lineTo(c.x + 3, c.y - 80);
+    ctx.closePath();
+    ctx.fillStyle = on ? COL.gold : COL.cream;
+    ctx.fill();
+    ctx.strokeStyle = COL.ink; ctx.lineWidth = 3; ctx.stroke();
+  }
+}
+
+function drawGoal(ls){
+  const g = ls.goal;
+  const won = ls.player.won;
+  const x = g.x, y = g.y, w = g.w, h = g.h;
+  // warm light spilling from the exit — the one gold thing in the level
+  const glow = ctx.createRadialGradient(x+w/2, y+h*0.55, 10, x+w/2, y+h*0.55, 110);
+  glow.addColorStop(0, 'rgba(242,182,50,0.35)');
+  glow.addColorStop(1, 'rgba(242,182,50,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(x-110, y-80, w+220, h+160);
+  // frame
+  ctx.fillStyle = COL.ink;
+  roundRect(x-7, y-7, w+14, h+7, 9); ctx.fill();
+  // opening (lit)
+  ctx.fillStyle = COL.gold;
+  ctx.fillRect(x, y, w, h);
+  // door leaf swings open on win
+  const open = won ? Math.min(1, ls.winT*3) : 0;
+  ctx.fillStyle = '#e9e1cd';
+  ctx.fillRect(x, y, w*(1-open*0.8), h);
+  ctx.fillStyle = COL.ink;
+  if(open < 0.6) ctx.fillRect(x + w*(1-open*0.8) - 14, y + h*0.5, 6, 11);
+  // EXIT sign
+  ctx.fillStyle = COL.ink;
+  roundRect(x + w/2 - 26, y - 34, 52, 22, 4); ctx.fill();
+  ctx.fillStyle = COL.gold;
+  ctx.font = '800 13px Inter, system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('EXIT', x + w/2, y - 18);
+  ctx.textAlign = 'start';
+}
+
+function drawAnnotations(list){
+  if(!list || !list.length) return;
+  ctx.font = '700 30px Caveat, "Comic Sans MS", cursive';
+  ctx.fillStyle = '#6b6352';
+  for(const a of list){
+    ctx.fillText((touchUI && a.touchText) ? a.touchText : a.text, a.x, a.y);
+  }
+}
+
+function drawParticles(){
+  for(const pt of particles){
+    ctx.globalAlpha = Math.max(0, Math.min(1, pt.life/pt.maxLife*1.4));
+    ctx.fillStyle = pt.color;
+    if(pt.shape === 'line'){
+      ctx.save(); ctx.translate(pt.x, pt.y); ctx.rotate(pt.rot || 0);
+      ctx.fillRect(-pt.size/2, -2.5, pt.size, 5);
+      ctx.restore();
+    } else if(pt.shape === 'head'){
+      ctx.beginPath(); ctx.arc(pt.x, pt.y, pt.size/2, 0, 6.2832); ctx.fill();
+    } else {
+      ctx.fillRect(pt.x - pt.size/2, pt.y - pt.size/2, pt.size, pt.size);
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* ---- stickman: joint-based procedural animation ----
+   limbs are two-segment chains computed from a handful of continuous pose
+   parameters (lean, crouch, stride phase) so motion blends naturally. */
+const LEG_THIGH=14, LEG_SHIN=14, ARM_UPPER=12, ARM_FORE=12, TORSO_LEN=20, NECK_HEAD=11, HEAD_R=8;
+
+function limbEnd(ox, oy, a1, l1, bend, l2){
+  const kx = ox + Math.sin(a1)*l1, ky = oy + Math.cos(a1)*l1;
+  const a2 = a1 - bend;
+  return {kx, ky, ex:kx + Math.sin(a2)*l2, ey:ky + Math.cos(a2)*l2};
+}
+
+function computePose(p){
+  const t = p.t, phase = p.locoPhase || 0;
+  const speedT = Math.min(1, Math.abs(p.vx)/MOVE_SPEED);
+  const pose = { torsoLean:0, headTilt:0, hipDrop:0, thighL:0, thighR:0, shinL:0.08, shinR:0.08,
+    armL:0, armR:0, elbowL:0.3, elbowR:0.3, squashX:1, squashY:1 };
+  const shake = p.standingOn && p.standingOn.shake ? p.standingOn.shake : 0;
+  switch(p.state){
+    case 'idle': {
+      const breathe = Math.sin(p.idleT*1.3);
+      pose.hipDrop = -breathe*1.2 + shake*0.6;
+      pose.torsoLean = Math.sin(p.idleT*0.35)*0.02 + shake*0.012;
+      pose.headTilt = Math.sin(p.idleT*0.5+1)*0.05;
+      pose.thighL = 0.04*Math.sin(p.idleT*0.6); pose.thighR = 0.04*Math.sin(p.idleT*0.6+2);
+      pose.shinL = 0.05; pose.shinR = 0.05;
+      pose.armL = 0.15+0.04*Math.sin(p.idleT*0.7); pose.armR = -0.15-0.04*Math.sin(p.idleT*0.7+1);
+      pose.elbowL = 0.35; pose.elbowR = 0.35;
+      break;
+    }
+    case 'walk':
+    case 'run': {
+      const ampThigh = 0.22+0.58*speedT, ampShin = 0.18+0.92*speedT, ampArm = 0.22+0.46*speedT;
+      pose.thighL = ampThigh*Math.sin(phase); pose.thighR = ampThigh*Math.sin(phase+Math.PI);
+      pose.shinL = Math.max(0.05, ampShin*Math.sin(phase-1.1)); pose.shinR = Math.max(0.05, ampShin*Math.sin(phase+Math.PI-1.1));
+      pose.armL = -ampArm*Math.sin(phase); pose.armR = -ampArm*Math.sin(phase+Math.PI);
+      // runners keep the elbows bent; more bend on the forward swing
+      pose.elbowL = 0.55+0.6*speedT+0.25*Math.sin(phase+0.6); pose.elbowR = 0.55+0.6*speedT+0.25*Math.sin(phase+Math.PI+0.6);
+      pose.hipDrop = Math.abs(Math.sin(phase))*(1.5+4*speedT)*0.6 + shake*0.6;
+      pose.torsoLean = (0.08+0.3*speedT) + (p.accelLean||0) + shake*0.012;
+      pose.headTilt = Math.sin(phase*2)*0.02*speedT - pose.torsoLean*0.3;
+      break;
+    }
+    case 'jump': {
+      const launchT = Math.min(1, (p.airTime||0)/0.14);
+      pose.thighL = -0.55-0.1*launchT; pose.thighR = -0.4-0.1*launchT;
+      pose.shinL = 0.75-0.15*launchT; pose.shinR = 0.55-0.1*launchT;
+      pose.torsoLean = -0.12 + (p.accelLean||0)*0.5;
+      pose.armL = -1.9-0.15*Math.sin(t*5); pose.armR = -1.7-0.15*Math.sin(t*5+1);
+      pose.hipDrop = -2*(1-launchT);
+      pose.squashX = 1.08-0.1*launchT; pose.squashY = 0.92+0.14*launchT;
+      break;
+    }
+    case 'fall': {
+      const fallFrac = Math.min(1, Math.abs(p.vy)/900);
+      pose.thighL = 0.35+0.12*Math.sin(t*8); pose.thighR = 0.35+0.12*Math.sin(t*8+1.4);
+      pose.shinL = 0.55+0.15*Math.sin(t*9+0.6); pose.shinR = 0.55+0.15*Math.sin(t*9+2);
+      pose.torsoLean = 0.06*speedT - fallFrac*0.05;
+      pose.headTilt = -fallFrac*0.08;
+      pose.armL = -1.1+0.3*Math.sin(t*7); pose.armR = 1.1-0.3*Math.sin(t*7+1);
+      pose.elbowL = 0.45; pose.elbowR = 0.45;
+      pose.squashX = 0.95-0.03*fallFrac; pose.squashY = 1.05+0.08*fallFrac;
+      break;
+    }
+    case 'land': {
+      const crouch = Math.max(0, p.landTimer)/0.14;
+      pose.thighL = 0.42*crouch; pose.thighR = 0.42*crouch;
+      pose.shinL = 0.7*crouch; pose.shinR = 0.7*crouch;
+      pose.headTilt = 0.05*crouch;
+      pose.armL = 0.5*crouch; pose.armR = -0.5*crouch;
+      pose.elbowL = 0.25+0.2*crouch; pose.elbowR = 0.25+0.2*crouch;
+      pose.hipDrop = 5*crouch;
+      pose.squashX = 1+0.18*crouch; pose.squashY = 1-0.22*crouch;
+      break;
+    }
+    case 'victory': {
+      pose.hipDrop = -Math.abs(Math.sin(t*6))*3.5;
+      pose.thighL = 0.3*Math.sin(t*6); pose.thighR = -0.3*Math.sin(t*6);
+      pose.shinL = 0.3; pose.shinR = 0.3;
+      pose.headTilt = 0.05*Math.sin(t*6);
+      pose.armL = -2.6+0.12*Math.sin(t*8); pose.armR = 2.6-0.12*Math.sin(t*8+1);
+      pose.elbowL = 0.2; pose.elbowR = 0.2;
+      break;
+    }
+  }
+  if(p.bumpTimer > 0){
+    const bt = p.bumpTimer/0.14;
+    pose.squashX *= (1-0.22*bt); pose.squashY *= (1+0.12*bt);
+  }
+  return pose;
+}
+
+function drawStickman(c, pose, lineW){
+  const hipY = -(LEG_THIGH+LEG_SHIN) + pose.hipDrop;
+  const shX = Math.sin(pose.torsoLean)*TORSO_LEN, shY = hipY - Math.cos(pose.torsoLean)*TORSO_LEN;
+  const ha = pose.torsoLean + pose.headTilt;
+  const hx = shX + Math.sin(ha)*NECK_HEAD, hy = shY - Math.cos(ha)*NECK_HEAD;
+  c.strokeStyle = '#161616'; c.fillStyle = '#161616';
+  c.lineWidth = lineW; c.lineCap = 'round'; c.lineJoin = 'round';
+  const legL = limbEnd(0, hipY, pose.thighL, LEG_THIGH, pose.shinL, LEG_SHIN);
+  const legR = limbEnd(0, hipY, pose.thighR, LEG_THIGH, pose.shinR, LEG_SHIN);
+  // Elbows flex forward (opposite to knees), so the bend is applied the other way.
+  const armL = limbEnd(shX, shY, pose.armL, ARM_UPPER, -pose.elbowL, ARM_FORE);
+  const armR = limbEnd(shX, shY, pose.armR, ARM_UPPER, -pose.elbowR, ARM_FORE);
+  c.beginPath();
+  c.moveTo(0, hipY); c.lineTo(shX, shY);
+  c.moveTo(0, hipY); c.lineTo(legL.kx, legL.ky); c.lineTo(legL.ex, legL.ey);
+  c.moveTo(0, hipY); c.lineTo(legR.kx, legR.ky); c.lineTo(legR.ex, legR.ey);
+  c.moveTo(shX, shY); c.lineTo(armL.kx, armL.ky); c.lineTo(armL.ex, armL.ey);
+  c.moveTo(shX, shY); c.lineTo(armR.kx, armR.ky); c.lineTo(armR.ex, armR.ey);
+  c.stroke();
+  c.beginPath(); c.arc(hx, hy, HEAD_R, 0, 6.2832); c.fill();
+}
+
+function drawPlayer(p){
+  const pose = computePose(p);
+  ctx.save();
+  ctx.translate(p.x + p.w/2, p.y + p.h);
+  ctx.scale(p.facing, 1);
+  const pop = p.spawnT < 1 ? 0.6 + 0.4*p.spawnT + Math.sin(p.spawnT*Math.PI)*0.12 : 1;
+  ctx.scale(pose.squashX*pop, pose.squashY*pop);
+  if(p.won){
+    const fade = Math.max(0, 1 - Math.max(0, levelState.winT - 0.15)*3);
+    ctx.globalAlpha = fade;
+  }
+  drawStickman(ctx, pose, 5);
+  ctx.restore();
+}
+
+/* =========================================================================
+   HUD / UI
+========================================================================= */
+function updateHud(){
+  const data = LEVELS[currentLevelIndex];
+  $('levelLabel').textContent = 'LEVEL ' + data.id;
+  $('levelSub').textContent = data.name;
+  $('progressText').textContent = data.id + ' / ' + LEVELS.length;
+  $('deathsText').textContent = 'Deaths: ' + save.totalDeaths;
+}
+function isUnlocked(i){
+  const lvl = LEVELS[i];
+  return lvl.id <= save.unlockedLevel || i === 0 || save.completedLevels.indexOf(lvl.id) >= 0 ||
+    save.completedLevels.indexOf(LEVELS[i-1].id) >= 0;
+}
+function buildLevelGrid(){
+  const grid = $('levelGrid');
+  grid.textContent = '';
+  LEVELS.forEach((lvl, i)=>{
+    const unlocked = isUnlocked(i);
+    const done = save.completedLevels.indexOf(lvl.id) >= 0;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'lvl-tile' + (unlocked ? '' : ' locked') + (done ? ' done' : '') + (i === currentLevelIndex && levelState ? ' current' : '');
+    const num = document.createElement('span'); num.className = 'n'; num.textContent = unlocked ? String(lvl.id) : '\u{1F512}';
+    const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = unlocked ? lvl.name : 'Locked';
+    btn.appendChild(num); btn.appendChild(nm);
+    if(unlocked){
+      const d = document.createElement('span'); d.className = 'df df' + tierOf(lvl); d.textContent = difficultyOf(lvl);
+      btn.appendChild(d);
+    }
+    const st = save.levelStats[lvl.id];
+    if(done && st && st.bestTime){
+      const b = document.createElement('span'); b.className = 'bt'; b.textContent = Number(st.bestTime).toFixed(1) + 's';
+      btn.appendChild(b);
+    }
+    btn.setAttribute('aria-label', unlocked ? ('Level ' + lvl.id + ': ' + lvl.name + (done ? ' (cleared)' : '')) : ('Level ' + lvl.id + ' locked'));
+    if(unlocked){
+      btn.addEventListener('click', ()=>{
+        Sound.unlock(); Sound.uiClick();
+        $('startScreen').hidden = true;
+        loadLevel(i);
+      });
+    } else btn.disabled = true;
+    grid.appendChild(btn);
+  });
+}
+
+function showOverlay(id){
+  root.querySelectorAll('.overlay').forEach(o=>o.classList.remove('show'));
+  $(id).classList.add('show');
+}
+function hideAllOverlays(){
+  root.querySelectorAll('.overlay').forEach(o=>o.classList.remove('show'));
+}
+function focusFirst(id){
+  const b = $(id).querySelector('button:not([disabled]):not([hidden])');
+  if(b){ try{ b.focus({preventScroll:true}); }catch(e){} }
+}
+
+function showToast(text){
+  const el = $('toastMsg');
+  el.textContent = text;
+  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+}
+// Difficulty tiers by level number (1 EASY ... 7 DEVIL).
+const TIER_NAMES = ['', 'EASY', 'MEDIUM', 'HARD', 'BRUTAL', 'INSANE', 'IMPOSSIBLE', 'DEVIL'];
+function tierOf(data){
+  const n = data.id;
+  return n <= 2 ? 1 : n <= 4 ? 2 : n <= 7 ? 3 : n <= 13 ? 4 : n <= 20 ? 5 : n <= 29 ? 6 : 7;
+}
+function difficultyOf(data){ return TIER_NAMES[tierOf(data)]; }
+function showLevelToast(data){
+  $('worldToastSub').textContent = 'LEVEL ' + data.id + ' \u00b7 ' + difficultyOf(data);
+  $('worldToastMain').textContent = data.name;
+  const el = $('worldToast');
+  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+}
+
+function pauseGame(){
+  if(gameState !== 'playing' && gameState !== 'dead') return;
+  gameState = 'paused';
+  clearKeys();
+  showOverlay('pauseOverlay');
+  focusFirst('pauseOverlay');
+}
+function resumeGame(){
+  if(gameState !== 'paused') return;
+  Sound.uiClick();
+  gameState = levelState && levelState.player.dead ? 'dead' : 'playing';
+  hideAllOverlays();
+  lastFrame = 0;
+}
+function togglePause(){
+  if(gameState === 'playing' || gameState === 'dead'){ Sound.uiClick(); pauseGame(); }
+  else if(gameState === 'paused') resumeGame();
+}
+let settingsReturn = null;
+function openSettings(){
+  Sound.uiClick();
+  if(gameState === 'playing' || gameState === 'dead'){ gameState = 'paused'; clearKeys(); }
+  settingsReturn = gameState === 'paused' ? 'pause' : null;
+  refreshSettingsUI();
+  showOverlay('settingsOverlay');
+  focusFirst('settingsOverlay');
+}
+function closeSettings(){
+  Sound.uiClick();
+  if(settingsReturn === 'pause' && gameState === 'paused'){ showOverlay('pauseOverlay'); focusFirst('pauseOverlay'); }
+  else hideAllOverlays();
+}
+function openMenu(){
+  if(gameState === 'playing' || gameState === 'dead') gameState = 'paused';
+  buildLevelGrid();
+  showOverlay('menuOverlay');
+  // open the (scrollable) grid at the current level, or the furthest one unlocked
+  const grid = $('levelGrid');
+  const tiles = grid.querySelectorAll('.lvl-tile');
+  const target = grid.querySelector('.lvl-tile.current') || [].filter.call(tiles, t=>!t.disabled).pop();
+  if(target){
+    grid.scrollTop = Math.max(0, target.offsetTop - grid.offsetTop - grid.clientHeight/2 + target.offsetHeight/2);
+    try{ target.focus({preventScroll:true}); }catch(e){}
+  } else focusFirst('menuOverlay');
+}
+function closeMenu(){
+  Sound.uiClick();
+  hideAllOverlays();
+  if(!levelState){ return; }
+  if(gameState === 'paused'){ gameState = levelState.player.dead ? 'dead' : 'playing'; lastFrame = 0; }
+}
+
+function refreshSettingsUI(){
+  root.querySelectorAll('.switch').forEach(sw=>{
+    const on = !!save.settings[sw.dataset.setting];
+    sw.classList.toggle('on', on);
+    sw.setAttribute('aria-checked', on ? 'true' : 'false');
+  });
+}
+root.querySelectorAll('.switch').forEach(sw=>{
+  sw.addEventListener('click', ()=>{
+    const key = sw.dataset.setting;
+    save.settings[key] = !save.settings[key];
+    persistSave();
+    refreshSettingsUI();
+    Sound.unlock();
+    Sound.uiClick();
+    if(key === 'music'){ if(save.settings.music) Sound.startMusic(); else Sound.stopMusic(); }
+    if(key === 'vibration' && save.settings.vibration) vibrate(HAPTIC.small);
+  });
+});
+
+function bindClick(id, fn){ $(id).addEventListener('click', fn); }
+bindClick('btnRestart', ()=>{ Sound.unlock(); Sound.uiClick(); if(levelState && gameState !== 'menu'){ restartLevel(); } });
+bindClick('btnSettings', openSettings);
+bindClick('btnPause', ()=>{ Sound.unlock(); togglePause(); });
+bindClick('btnResume', resumeGame);
+bindClick('btnPauseRestart', ()=>{ Sound.uiClick(); restartLevel(); });
+bindClick('btnPauseSettings', openSettings);
+bindClick('btnPauseMenu', ()=>{ Sound.uiClick(); openMenu(); });
+bindClick('btnCloseSettings', closeSettings);
+bindClick('btnCloseMenu', closeMenu);
+bindClick('btnPlay', ()=>{
+  Sound.unlock(); Sound.uiClick();
+  $('startScreen').hidden = true;
+  pointerActive = true;
+  // continue from the furthest unlocked level that exists in this version
+  let idx = 0;
+  for(let i=0;i<LEVELS.length;i++) if(isUnlocked(i)) idx = i;
+  if(save.completedLevels.length >= LEVELS.length) idx = 0;
+  loadLevel(idx);
+  try{ stage.focus({preventScroll:true}); }catch(e){}
+});
+bindClick('btnLevelSelectStart', ()=>{ Sound.unlock(); Sound.uiClick(); openMenu(); });
+bindClick('btnSettingsStart', ()=>{ Sound.unlock(); openSettings(); });
+
+// Fullscreen toggle (embedded mode only, where the API exists).
+const fsBtn = $('btnFullscreen');
+const fsTarget = app;
+if(!isFullscreenMode && (document.fullscreenEnabled || document.webkitFullscreenEnabled)){
+  fsBtn.hidden = false;
+  fsBtn.addEventListener('click', ()=>{
+    Sound.uiClick();
+    const active = document.fullscreenElement || document.webkitFullscreenElement;
+    if(active){ (document.exitFullscreen || document.webkitExitFullscreen).call(document); }
+    else { const req = fsTarget.requestFullscreen || fsTarget.webkitRequestFullscreen; if(req){ const r = req.call(fsTarget); if(r && r.catch) r.catch(()=>{}); } }
+  });
+  const onFs = ()=>{ root.classList.toggle('dgm-is-fs', !!(document.fullscreenElement || document.webkitFullscreenElement)); setTimeout(layout, 50); };
+  document.addEventListener('fullscreenchange', onFs);
+  document.addEventListener('webkitfullscreenchange', onFs);
+}
+
+// Embedded: pause when the game scrolls mostly out of view.
+if(!isFullscreenMode && typeof IntersectionObserver === 'function'){
+  new IntersectionObserver((entries)=>{
+    const e = entries[0];
+    if(e && e.intersectionRatio < 0.35 && gameState === 'playing') pauseGame();
+  }, {threshold:[0, 0.35]}).observe(app);
+}
+
+/* =========================================================================
+   ACCOUNTS & LEADERBOARD (only when the WordPress plugin provides a config)
+   Guests always play; signing in syncs progress and submits best times.
+   Nothing here can grant unlocks: the server only stores and ranks times.
+========================================================================= */
+const CFG = (window.DESKMAN_CONFIG && window.DESKMAN_CONFIG.restUrl) ? window.DESKMAN_CONFIG : null;
+let me = CFG && CFG.me ? CFG.me : {loggedIn:false};
+let restNonce = CFG ? CFG.nonce : '';
+let pendingGoogleCredential = null;
+
+function apiUrl(path, query){
+  let u = CFG.restUrl + path;
+  if(query) u += (u.indexOf('?') >= 0 ? '&' : '?') + query;
+  return u;
+}
+function rest(path, body, method){
+  return fetch(apiUrl(path), {
+    method: method || (body ? 'POST' : 'GET'),
+    credentials: 'same-origin',
+    headers: {'Content-Type':'application/json', 'X-WP-Nonce': restNonce},
+    body: body ? JSON.stringify(body) : undefined
+  }).then(r=>r.json().catch(()=>({})).then(j=>{
+    if(!r.ok){ const e = new Error(j && j.message ? j.message : 'Something went wrong. Try again.'); e.code = j && j.code; throw e; }
+    return j;
+  }));
+}
+function localProgress(){
+  return {unlockedLevel:save.unlockedLevel, completedLevels:save.completedLevels.slice(), totalDeaths:save.totalDeaths};
+}
+function mergeServerProgress(p){
+  if(!p) return;
+  save.unlockedLevel = Math.max(save.unlockedLevel, parseInt(p.unlockedLevel, 10) || 1);
+  (p.completedLevels || []).forEach(n=>{ n = parseInt(n, 10); if(n > 0 && save.completedLevels.indexOf(n) < 0) save.completedLevels.push(n); });
+  save.totalDeaths = Math.max(save.totalDeaths, parseInt(p.totalDeaths, 10) || 0);
+  persistSave(); buildLevelGrid(); updateHud();
+}
+function onAuth(res){
+  me = res.me || {loggedIn:false};
+  restNonce = res.nonce || restNonce;
+  if(me.loggedIn){
+    mergeServerProgress(me.progress);
+    rest('progress', {progress:localProgress()}).then(r=>mergeServerProgress(r.progress)).catch(()=>{});
+  }
+  updateAccountUI();
+}
+function setAcctMsg(text, ok){
+  const el = $(me.loggedIn ? 'acctMsg2' : 'acctMsg');
+  el.textContent = text || ''; el.classList.toggle('ok', !!ok);
+}
+function updateAccountUI(){
+  const on = !!CFG;
+  ['btnAccount','btnBoardStart','btnPauseBoard','accountLine'].forEach(id=>{ $(id).hidden = !on; });
+  if(!on) return;
+  root.querySelectorAll('.lnk-terms').forEach(a=>{ if(CFG.termsUrl) a.href = CFG.termsUrl; });
+  root.querySelectorAll('.lnk-privacy').forEach(a=>{ if(CFG.privacyUrl) a.href = CFG.privacyUrl; });
+  const line = $('accountLine');
+  line.textContent = '';
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'link-btn';
+  if(me.loggedIn){
+    line.append('Signed in as ' + me.name + (me.verified ? '' : ' (email not verified)') + ' · ');
+    b.textContent = 'Account';
+  } else {
+    line.append('Playing as guest · ');
+    b.textContent = CFG.allowRegistration ? 'Sign in / create account' : 'Sign in';
+  }
+  b.addEventListener('click', openAccount);
+  line.appendChild(b);
+  $('acctGuest').hidden = me.loggedIn; $('acctUser').hidden = !me.loggedIn;
+  $('accountTitle').textContent = me.loggedIn ? 'Your account' : 'Join the leaderboard';
+  $('tabRegister').hidden = !CFG.allowRegistration;
+  if(me.loggedIn){
+    $('acctName').textContent = me.name;
+    $('acctEmail').textContent = me.email || '';
+    $('acctVerify').hidden = !!me.verified || !CFG.requireVerify;
+  }
+}
+function showTab(which){
+  const reg = which === 'register';
+  $('formSignIn').hidden = reg; $('formRegister').hidden = !reg;
+  $('tabSignIn').classList.toggle('on', !reg); $('tabRegister').classList.toggle('on', reg);
+  $('tabSignIn').setAttribute('aria-selected', String(!reg)); $('tabRegister').setAttribute('aria-selected', String(reg));
+  $('googleTerms').hidden = true; setAcctMsg('');
+}
+let accountReturn = null;
+function openAccount(){
+  if(!CFG) return;
+  Sound.unlock(); Sound.uiClick();
+  if(gameState === 'playing' || gameState === 'dead'){ gameState = 'paused'; clearKeys(); }
+  accountReturn = gameState === 'paused' ? 'pause' : null;
+  updateAccountUI(); setAcctMsg('');
+  showOverlay('accountOverlay');
+  if(!me.loggedIn) loadGoogle();
+  const f = root.querySelector('#accountOverlay input:not([type=hidden]):not([tabindex="-1"]), #accountOverlay button');
+  if(f){ try{ f.focus({preventScroll:true}); }catch(e){} }
+}
+function closeAccount(){
+  Sound.uiClick();
+  if(accountReturn === 'pause' && gameState === 'paused'){ showOverlay('pauseOverlay'); focusFirst('pauseOverlay'); }
+  else hideAllOverlays();
+}
+function formData(form){ const o = {}; new FormData(form).forEach((v, k)=>{ o[k] = v; }); return o; }
+function busy(form, on){ form.querySelectorAll('button, input').forEach(el=>{ el.disabled = on; }); }
+$('tabSignIn').addEventListener('click', ()=>showTab('signin'));
+$('tabRegister').addEventListener('click', ()=>showTab('register'));
+$('formSignIn').addEventListener('submit', (e)=>{
+  e.preventDefault();
+  const f = e.target, d = formData(f);
+  if(!d.login || !d.password){ setAcctMsg('Enter your username or email and password.'); return; }
+  busy(f, true); setAcctMsg('Signing in…', true);
+  rest('login', {login:d.login, password:d.password}).then(r=>{ onAuth(r); setAcctMsg('Welcome back, ' + me.name + '!', true); Sound.checkpoint(); })
+    .catch(err=>setAcctMsg(err.message)).then(()=>busy(f, false));
+});
+$('formRegister').addEventListener('submit', (e)=>{
+  e.preventDefault();
+  const f = e.target, d = formData(f);
+  if(!f.elements.agree.checked){ setAcctMsg('Please agree to the Terms of Service and Privacy Policy.'); return; }
+  if(!d.username || d.username.length < 3){ setAcctMsg('Choose a username of at least 3 characters.'); return; }
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email || '')){ setAcctMsg('Enter a valid email address.'); return; }
+  if(!d.password || d.password.length < 8){ setAcctMsg('Use a password of at least 8 characters.'); return; }
+  busy(f, true); setAcctMsg('Creating your account…', true);
+  rest('register', {username:d.username, email:d.email, password:d.password, agree:true, website:d.website || '', progress:localProgress()})
+    .then(r=>{ onAuth(r); setAcctMsg('Account created! We sent a verification link to ' + me.email + '.', true); Sound.victory(); })
+    .catch(err=>setAcctMsg(err.message)).then(()=>busy(f, false));
+});
+$('btnResend').addEventListener('click', ()=>{
+  rest('verify/resend', {}).then(r=>setAcctMsg(r.verified ? 'Your email is already verified.' : 'Verification email sent. Check your inbox.', true))
+    .catch(err=>setAcctMsg(err.message));
+});
+$('btnSignOut').addEventListener('click', ()=>{
+  rest('logout', {}).then(r=>{ onAuth(r); setAcctMsg('Signed out. Your progress stays on this device.', true); }).catch(err=>setAcctMsg(err.message));
+});
+$('btnGuest').addEventListener('click', closeAccount);
+$('btnAcctDone').addEventListener('click', closeAccount);
+$('btnAccount').addEventListener('click', openAccount);
+$('btnAcctBoard').addEventListener('click', ()=>openBoard());
+
+// Google Identity Services: loaded only when the account panel opens.
+let googleState = 'idle';
+function loadGoogle(){
+  if(!CFG || !CFG.googleClientId || googleState !== 'idle') return;
+  googleState = 'loading';
+  const sc = document.createElement('script');
+  sc.src = 'https://accounts.google.com/gsi/client'; sc.async = true; sc.defer = true;
+  sc.onload = ()=>{
+    try{
+      window.google.accounts.id.initialize({client_id:CFG.googleClientId, callback:(resp)=>googleCredential(resp.credential), ux_mode:'popup'});
+      window.google.accounts.id.renderButton($('googleBtn'), {theme:'outline', size:'large', text:'continue_with', shape:'pill', width:280});
+      $('googleArea').hidden = false; googleState = 'ready';
+    }catch(e){ googleState = 'failed'; }
+  };
+  sc.onerror = ()=>{ googleState = 'failed'; };
+  document.head.appendChild(sc);
+}
+function googleCredential(credential, agree){
+  pendingGoogleCredential = credential;
+  setAcctMsg('Signing in with Google…', true);
+  return rest('google', {credential, agree:!!agree}).then(r=>{
+    pendingGoogleCredential = null; $('googleTerms').hidden = true;
+    onAuth(r); setAcctMsg('Signed in as ' + me.name + '.', true); Sound.checkpoint();
+  }).catch(err=>{
+    if(err.code === 'terms_required'){ $('googleTerms').hidden = false; setAcctMsg('One more step: agree to the terms to create your account.'); }
+    else setAcctMsg(err.message);
+  });
+}
+$('btnGoogleContinue').addEventListener('click', ()=>{
+  if(!$('googleAgree').checked){ setAcctMsg('Please agree to the Terms of Service and Privacy Policy.'); return; }
+  if(pendingGoogleCredential) googleCredential(pendingGoogleCredential, true);
+});
+
+// Leaderboard panel
+(function(){
+  const sel = $('boardLevel');
+  for(let i=1;i<=LEVELS.length;i++){ const o = document.createElement('option'); o.value = String(i); o.textContent = 'Level ' + i + ' · ' + LEVELS[i-1].name; sel.appendChild(o); }
+  sel.addEventListener('change', ()=>loadBoard(parseInt(sel.value, 10) || 0));
+})();
+function fmtMs(ms){
+  ms = Math.max(0, ms|0);
+  const m = Math.floor(ms/60000), sec = (ms % 60000)/1000;
+  return m ? m + ':' + (sec < 10 ? '0' : '') + sec.toFixed(2) : sec.toFixed(2) + 's';
+}
+let boardReturn = null;
+function openBoard(level){
+  if(!CFG) return;
+  Sound.unlock(); Sound.uiClick();
+  if(gameState === 'playing' || gameState === 'dead'){ gameState = 'paused'; clearKeys(); }
+  boardReturn = $('accountOverlay').classList.contains('show') ? 'account' : (gameState === 'paused' ? 'pause' : null);
+  const lv = level != null ? level : 0;
+  $('boardLevel').value = String(lv);
+  showOverlay('boardOverlay');
+  loadBoard(lv);
+  try{ $('boardLevel').focus({preventScroll:true}); }catch(e){}
+}
+function closeBoard(){
+  Sound.uiClick();
+  if(boardReturn === 'account'){ showOverlay('accountOverlay'); return; }
+  if(boardReturn === 'pause' && gameState === 'paused'){ showOverlay('pauseOverlay'); focusFirst('pauseOverlay'); return; }
+  hideAllOverlays();
+}
+function loadBoard(level){
+  const body = $('boardBody');
+  body.textContent = '';
+  $('boardCol3').textContent = level ? 'Best time' : 'Levels';
+  $('boardCol4').textContent = level ? 'Deaths' : 'Total time';
+  $('boardNote').textContent = 'Loading…';
+  fetch(apiUrl('leaderboard', level ? 'level=' + level : ''), {credentials:'same-origin', headers:{'X-WP-Nonce':restNonce}})
+    .then(r=>r.json()).then(j=>{
+      const rows = (j && j.rows) || [];
+      rows.forEach(r=>{
+        const tr = document.createElement('tr'); if(r.isMe) tr.className = 'is-me';
+        const cells = [r.rank, r.name, level ? fmtMs(r.timeMs) : (r.cleared + ' / ' + LEVELS.length), level ? r.deaths : fmtMs(r.timeMs)];
+        cells.forEach(v=>{ const td = document.createElement('td'); td.textContent = String(v); tr.appendChild(td); });
+        body.appendChild(tr);
+      });
+      let note = rows.length ? '' : 'No times yet. Clear a level while signed in to be first.';
+      if(!me.loggedIn) note += (note ? ' ' : '') + 'Sign in to put your times on the board.';
+      else if(CFG.requireVerify && !me.verified) note += (note ? ' ' : '') + 'Verify your email to appear here.';
+      $('boardNote').textContent = note;
+    }).catch(()=>{ $('boardNote').textContent = 'Could not load the leaderboard. Check your connection.'; });
+}
+$('btnCloseBoard').addEventListener('click', closeBoard);
+$('btnBoardStart').addEventListener('click', ()=>openBoard());
+$('btnPauseBoard').addEventListener('click', ()=>openBoard());
+
+function submitClear(levelId, timeMs, deaths){
+  if(!CFG || !me.loggedIn) return;
+  rest('progress', {progress:localProgress()}).catch(()=>{});
+  if(CFG.requireVerify && !me.verified) return;
+  rest('score', {level:levelId, timeMs:Math.round(timeMs), deaths}).then(r=>{
+    if(r && r.personalBest) setTimeout(()=>showToast('New personal best on the leaderboard!'), 900);
+  }).catch(()=>{});
+}
+
+function announceVerifyResult(){
+  if(!CFG || !CFG.verifyResult) return;
+  const msg = {ok:'Email verified! Your times now count on the leaderboard.', already:'Your email was already verified.',
+    expired:'That verification link expired. Open your account to get a new one.', invalid:'That verification link is not valid.'}[CFG.verifyResult];
+  if(CFG.verifyResult === 'ok' && me.loggedIn) me.verified = true;
+  if(msg) setTimeout(()=>showToast(msg), 400);
+}
+
+/* =========================================================================
+   MAIN LOOP — fixed 120 Hz simulation, rendered on requestAnimationFrame.
+   Results are identical at 30, 60, 120 or 144 Hz displays.
+========================================================================= */
+function simStep(dt){
+  simTime += dt;
+  const ls = levelState;
+  if(!ls) return;
+  if(gameState === 'playing'){
+    ls.elapsed += dt;
+    attemptTime += dt;
+    updateWorld(ls, dt);
+    updatePlayer(ls, dt);
+  } else if(gameState === 'dead'){
+    ls.elapsed += dt;
+    ls.deadT += dt;
+    updateWorld(ls, dt);
+    if(ls.deadT >= RESPAWN_DELAY) respawn();
+  } else if(gameState === 'won'){
+    ls.winT += dt;
+    ls.player.t += dt;
+    if(ls.winT >= (ls.winDelay || 1.35) && !anyOverlayOpen()) advanceAfterWin();
+  }
+  if(ls.flash > 0) ls.flash = Math.max(0, ls.flash - dt*6);
+  if(gameState !== 'paused'){
+    updateCamera(levelState, dt);
+    updateParticles(dt);
+  }
+}
+
+function frame(ts){
+  advanceFrame(ts);
+  requestAnimationFrame(frame);
+}
+function advanceFrame(ts){
+  if(!lastFrame) lastFrame = ts;
+  const frameDt = Math.min(0.25, Math.max(0, (ts - lastFrame)/1000));
+  lastFrame = ts;
+  if(!loopPaused){
+    accumulator += frameDt;
+    let steps = 0;
+    while(accumulator >= STEP - 1e-9 && steps < MAX_STEPS){ simStep(STEP); accumulator -= STEP; steps++; }
+    if(steps >= MAX_STEPS) accumulator = 0; // drop time instead of spiralling
+  }
+  draw();
+}
+
+/* Intro stickman on the start screen (stops once the screen is hidden). */
+function animateIntro(){
+  const c = $('introCanvas');
+  const ic = c.getContext('2d');
+  const p = { t:0, idleT:0, locoPhase:0, vx:MOVE_SPEED, vy:0, state:'run', airTime:0, accelLean:0, landTimer:0, standingOn:null };
+  const W = 320, H = 140, dpr = Math.min(3, window.devicePixelRatio || 1);
+  c.width = Math.round(W*dpr); c.height = Math.round(H*dpr);
+  let last = 0;
+  function loop(ts){
+    if($('startScreen').hidden) return;
+    const dt = last ? Math.min(0.05, (ts-last)/1000) : 0.016; last = ts;
+    p.t += dt; p.locoPhase = (p.locoPhase + (MOVE_SPEED/STRIDE_LEN)*dt*Math.PI*2) % (Math.PI*2);
+    ic.setTransform(dpr,0,0,dpr,0,0);
+    ic.clearRect(0, 0, W, H);
+    // Ground bar.
+    ic.fillStyle = '#1a1a1a';
+    ic.beginPath();
+    if(ic.roundRect) ic.roundRect(30, 124, 260, 12, 3); else ic.rect(30, 124, 260, 12);
+    ic.fill();
+    // Speed lines behind the runner, flickering with the stride.
+    ic.strokeStyle = 'rgba(26,26,26,0.32)'; ic.lineCap = 'round'; ic.lineWidth = 4;
+    const f = Math.sin(p.locoPhase*2)*4;
+    ic.beginPath();
+    ic.moveTo(104+f, 70); ic.lineTo(128+f, 70);
+    ic.moveTo(94-f, 84); ic.lineTo(122-f, 84);
+    ic.stroke();
+    ic.translate(166, 124); ic.scale(1.7, 1.7);
+    drawStickman(ic, computePose(p), 4.2);
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+}
+
+/* =========================================================================
+   PUBLIC API
+   A small read-only surface for integrations (future accounts, leaderboard
+   submission via the WordPress REST API, analytics). It never exposes a
+   way to grant unlocks or currency.
+========================================================================= */
+const api = {
+  version: GAME_VERSION,
+  levels: LEVELS.map(l=>({id:l.id, name:l.name})),
+  getProgress(){ return JSON.parse(JSON.stringify({unlockedLevel:save.unlockedLevel, completedLevels:save.completedLevels, totalDeaths:save.totalDeaths, levelStats:save.levelStats})); },
+  getState(){ return gameState; }
+};
+if(DEBUG){
+  // Deterministic hooks used by the automated play-through tests.
+  api.debug = {
+    LEVELS, keys, consts:{STEP, MOVE_SPEED, JUMP_VELOCITY, GRAVITY, PLAYER_W, PLAYER_H},
+    setLoopPaused(v){ loopPaused = !!v; },
+    start(i){ $('startScreen').hidden = true; pointerActive = true; loadLevel(i); },
+    startAt(i, cp){ $('startScreen').hidden = true; pointerActive = true; loadLevel(i); checkpointIndex = cp; spawnLevel(true); },
+    step(n){ for(let i=0;i<(n||1);i++) simStep(STEP); },
+    frame(ms){ advanceFrame((lastFrame || performance.now()) + ms); },
+    press(k, v){ if(k === 'jump' && v && !keys.jump) jumpPressedAt = simTime; keys[k] = v; },
+    level(){ return levelState; },
+    state(){ return gameState; },
+    checkpoint(){ return checkpointIndex; },
+    view(){ return Object.assign({}, view); },
+    camera(){ return Object.assign({}, camera); },
+    solids(){ return levelState ? solidsOf(levelState).map(s=>({x:s.x,y:s.y,w:s.w,h:s.h})) : []; },
+    respawn, restartLevel, layout, sound: Sound, buildLevel, google: (c, agree)=>googleCredential(c, agree), nonce: ()=>restNonce
+  };
+}
+window.DeskmanFun = api;
+
+/* =========================================================================
+   BOOT
+========================================================================= */
+if(!touchUI) $('startHint').hidden = false; else $('startHint').hidden = true;
+layout();
+updateAccountUI();
+announceVerifyResult();
+refreshSettingsUI();
+updateHud();
+buildLevelGrid();
+animateIntro();
+requestAnimationFrame(frame);
+})();

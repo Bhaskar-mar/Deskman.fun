@@ -1,0 +1,11 @@
+/* [deskman_leaderboard] — scoped so it looks right in any theme */
+.dgm-lb{ --lb-ink:#1a1a1a; --lb-cream:#efe9dc; --lb-red:#b91c26; font-family:'Inter',system-ui,sans-serif; color:var(--lb-ink); margin:0 0 24px; }
+.dgm-lb .dgm-lb-filter{ display:flex; align-items:center; gap:10px; margin:0 0 14px; font-weight:800; font-size:14px; }
+.dgm-lb select{ font:700 15px 'Inter',system-ui,sans-serif; color:var(--lb-ink); background:#fff; border:2px solid var(--lb-ink); border-radius:10px; padding:8px 10px; }
+.dgm-lb .dgm-lb-table{ width:100%; border-collapse:collapse; border:3px solid var(--lb-ink); border-radius:14px; overflow:hidden; background:#fffdf8; }
+.dgm-lb .dgm-lb-table th{ background:var(--lb-ink); color:var(--lb-cream); text-align:left; font-size:12px; text-transform:uppercase; letter-spacing:.6px; padding:10px 12px; }
+.dgm-lb .dgm-lb-table td{ padding:10px 12px; border-top:1px solid #e5decd; overflow-wrap:anywhere; }
+.dgm-lb .dgm-lb-table tr:nth-child(-n+3) td:first-child{ color:var(--lb-red); font-weight:900; }
+.dgm-lb .dgm-lb-table tr.is-me td{ background:#fbecc5; font-weight:800; }
+.dgm-lb .dgm-lb-empty{ background:#fffdf8; border:2px dashed #cfc6ae; border-radius:12px; padding:18px; text-align:center; font-weight:600; }
+.dgm-lb .dgm-lb-note{ margin-top:14px; font-weight:800; }
